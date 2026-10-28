@@ -27,9 +27,7 @@ address() {
 }
 # Authorize through Apple's local root transport; no password or forwarded agent.
 authorize() {
-  # The currently published base release still uses /var/lib/machines.
-  # shellcheck disable=SC2016 # Expand the key path inside the guest.
-  guest 'keys=/etc/ssh/authorized_keys; if grep -qF "AuthorizedKeysFile /var/lib/machines/authorized_keys" /etc/ssh/sshd_config; then keys=/var/lib/machines/authorized_keys; install -d -m 0755 /var/lib/machines; fi; cat >> "$keys"; sort -u "$keys" -o "$keys"; chmod 644 "$keys"'
+  guest 'cat >> /etc/ssh/authorized_keys; sort -u /etc/ssh/authorized_keys -o /etc/ssh/authorized_keys; chmod 644 /etc/ssh/authorized_keys'
 }
 ssh_config() {
   # Use dedicated keys and locally pinned host keys rather than agent forwarding.
@@ -83,8 +81,8 @@ up() {
       fi
       # Match the NixOS image's accounts; keep repositories on the Linux disk.
       if [ "$role" = dev ]; then machine_uid=1000; machine_gid=100; else machine_uid=0; machine_gid=0; fi
-      # Older published images can race /etc creation; the readiness pass retries
-      # their boot. New images tolerate the early optional-file lookups directly.
+      # Apple's account setup can race NixOS activation on first boot. The
+      # readiness pass resumes the guest after its account files have settled.
       env -u SSH_AUTH_SOCK "$cli" machine create --name "$name" --home-mount none \
         --cpus "$cpus" --memory "$memory" --user "$username" --uid "$machine_uid" --gid "$machine_gid" "$image" || echo 'Checking guest readiness after boot.'
     fi
