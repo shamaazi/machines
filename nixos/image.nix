@@ -1,5 +1,5 @@
 {
-  role ? "target",
+  role ? "dev",
 }:
 let
   lock = builtins.fromJSON (builtins.readFile ../devenv.lock);
