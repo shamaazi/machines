@@ -24,7 +24,9 @@ address() {
 }
 # Authorize through Apple's local root transport; no password or forwarded agent.
 authorize() {
-  guest 'cat >> /etc/ssh/authorized_keys; sort -u /etc/ssh/authorized_keys -o /etc/ssh/authorized_keys; chmod 644 /etc/ssh/authorized_keys'
+  # The currently published base release still uses /var/lib/machines.
+  # shellcheck disable=SC2016 # Expand the key path inside the guest.
+  guest 'keys=/etc/ssh/authorized_keys; if grep -qF "AuthorizedKeysFile /var/lib/machines/authorized_keys" /etc/ssh/sshd_config; then keys=/var/lib/machines/authorized_keys; install -d -m 0755 /var/lib/machines; fi; cat >> "$keys"; sort -u "$keys" -o "$keys"; chmod 644 "$keys"'
 }
 ssh_config() {
   local host_address=$1 host_user=$2 host_port=$3 identity=$4 hosts=$5
@@ -73,7 +75,7 @@ up() {
       fi
       if [ "$role" = dev ]; then machine_uid=1000; machine_gid=100; else machine_uid=0; machine_gid=0; fi
       env -u SSH_AUTH_SOCK "$cli" machine create --name "$name" --home-mount none \
-        --cpus "$cpus" --memory "$memory" --user "$username" --uid "$machine_uid" --gid "$machine_gid" "$image"
+        --cpus "$cpus" --memory "$memory" --user "$username" --uid "$machine_uid" --gid "$machine_gid" "$image" || echo 'Checking guest readiness after boot.'
     fi
     # machine run also resumes a stopped machine. Existing disks/configurations survive.
     # The readiness loop runs inside the guest.
