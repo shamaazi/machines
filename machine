@@ -8,8 +8,7 @@ if [ -f "$root/machines.env" ]; then
   source "$root/machines.env"
   set +a
 fi
-store="${MACHINES_HOME:-$HOME/.local/share/machines}"
-cli="$store/installer/Payload/bin/container"
+source "$root/bootstrap.sh"
 role=${1:-dev}
 action=${2:-status}
 case "$role" in
@@ -20,92 +19,9 @@ esac
 # These values are also used in guest shell commands.
 [[ "$name" =~ ^[a-zA-Z0-9_-]+$ && "$username" =~ ^[a-z_][a-z0-9_-]*$ ]] || exit 2
 keys="$store/ssh/$role"
-mkdir -p "$store"
-setup() {
-  if [ ! -x "$cli" ]; then
-    curl --fail --location --output "$store/container-1.6.1.pkg" \
-      https://github.com/apple/container/releases/download/1.6.1/container-1.6.1-installer-signed.pkg
-    printf '%s  %s\n' cd47846819f06478d067060efe21e516b562ac0a9af8eecad6d5fea0b556b200 \
-      "$store/container-1.6.1.pkg" | shasum -a 256 --check
-    pkgutil --check-signature "$store/container-1.6.1.pkg"
-    pkgutil --expand-full "$store/container-1.6.1.pkg" "$store/installer"
-  fi
-  env -u SSH_AUTH_SOCK "$cli" system start --install-root "$store/installer/Payload" \
-    --app-root "$store/state" --enable-kernel-install
-  "$cli" system status
-}
-guest() {
-  "$cli" machine run -i -n "$name" --root -- "export PATH=/nix/var/nix/profiles/system/sw/bin:/run/current-system/sw/bin; $1"
-}
-address() {
-  "$cli" machine inspect "$name" | plutil -extract 0.ipAddress raw -o - -
-}
-# Authorize through Apple's local root transport; no password or forwarded agent.
-authorize() {
-  guest 'install -d -m 0755 /var/lib/machines; touch /var/lib/machines/authorized_keys; cat >> /var/lib/machines/authorized_keys; sort -u /var/lib/machines/authorized_keys -o /var/lib/machines/authorized_keys; chmod 644 /var/lib/machines/authorized_keys'
-}
-ssh_config() {
-  local host_address=$1 host_user=$2 host_port=$3 identity=$4 hosts=$5
-  printf 'Host %s\n  HostName %s\n  User %s\n  Port %s\n  IdentityFile "%s"\n  UserKnownHostsFile "%s"\n  IdentitiesOnly yes\n  StrictHostKeyChecking yes\n  ForwardAgent no\n' \
-    "$role" "$host_address" "$host_user" "$host_port" "$identity" "$hosts"
-}
 case "$action" in
-  pull)
-    setup
-    release=$(plutil -extract release raw -o - "$root/images.json")
-    checksum=$(plutil -extract "$role.sha256" raw -o - "$root/images.json")
-    [[ "$release" =~ ^base-[0-9]{4}-[0-9]{2}-[0-9]{2}(-[0-9]+)?$ && "$checksum" =~ ^[a-f0-9]{64}$ ]]
-    download="$store/images/$release"
-    mkdir -p "$download"
-    archive="$download/nixos-$role-aarch64.oci.tar.gz"
-    if ! { test -f "$archive" && printf '%s  %s\n' "$checksum" "$archive" | shasum -a 256 --check; }; then
-      curl --fail --location --retry 5 --retry-all-errors --continue-at - --output "$archive.download" \
-        "https://github.com/shamaazi/machines/releases/download/$release/nixos-$role-aarch64.oci.tar.gz"
-      printf '%s  %s\n' "$checksum" "$archive.download" | shasum -a 256 --check
-      mv "$archive.download" "$archive"
-    fi
-    expanded="$download/nixos-$role.oci.tar"
-    gzip -dc "$archive" > "$expanded"
-    "$cli" image load --input "$expanded"
-    "$cli" image tag "nixos-$role:local" "nixos-$role:$release"
-    unlink "$expanded"
-    ;;
-  up)
-    setup
-    if ! "$cli" machine inspect "$name" >/dev/null 2>&1; then
-      release=$(plutil -extract release raw -o - "$root/images.json")
-      published="nixos-$role:$release"
-      if [ "$role" = dev ]; then image=${MACHINES_DEV_IMAGE:-$published}; else image=${MACHINES_TARGET_IMAGE:-$published}; fi
-      if [ "$role" = dev ] && [ "$image" = "$published" ] && [ "$username" != developer ]; then
-        echo 'The published dev image uses the developer account. Set MACHINES_USER=developer.' >&2
-        exit 1
-      fi
-      if ! "$cli" image inspect "$image" >/dev/null 2>&1; then
-        if [ "$image" != "$published" ]; then
-          echo "Import custom image $image first." >&2
-          exit 1
-        fi
-        bash "$root/machine" "$role" pull
-      fi
-      if [ "$role" = dev ]; then machine_uid=1000; machine_gid=100; else machine_uid=0; machine_gid=0; fi
-      env -u SSH_AUTH_SOCK "$cli" machine create --name "$name" --home-mount none \
-        --cpus "$cpus" --memory "$memory" --user "$username" --uid "$machine_uid" --gid "$machine_gid" "$image" || echo 'Checking guest readiness after boot.'
-    fi
-    # machine run also resumes a stopped machine. Existing disks/configurations survive.
-    # The readiness loop runs inside the guest.
-    # shellcheck disable=SC2016
-    guest 'set -e; for attempt in $(seq 1 60); do systemctl is-active --quiet multi-user.target 2>/dev/null && exit 0; sleep 1; done; exit 1'
-    mkdir -p "$keys"
-    chmod 700 "$keys"
-    test -f "$keys/id_ed25519" || ssh-keygen -q -t ed25519 -N '' -f "$keys/id_ed25519"
-    authorize < "$keys/id_ed25519.pub"
-    host_address=$(address)
-    { printf '[%s]:%s ' "$host_address" "$port"; guest 'cat /etc/ssh/ssh_host_ed25519_key.pub'; } > "$keys/known_hosts"
-    ssh_config "$host_address" "$username" "$port" "$keys/id_ed25519" "$keys/known_hosts" > "$keys/config"
-    chmod 600 "$keys/config" "$keys/known_hosts"
-    ssh -n -F "$keys/config" "$role" 'hostname; uname -m'
-    printf 'SSH: ssh -F "%s/config" %s\n' "$keys" "$role"
-    ;;
+  pull) setup; load_release; pull_image ;;
+  up) up ;;
   pair)
     test "$role" = target
     dev_config="$store/ssh/dev/config"
