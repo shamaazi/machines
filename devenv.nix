@@ -1,6 +1,6 @@
 { inputs, ... }:
 let
-  buildImage = import ./lib {
+  buildImage = import ./lib/image.nix {
     # Evaluate the hosts with Linux packages even when devenv runs on macOS.
     pkgs = inputs.nixpkgs.legacyPackages.aarch64-linux;
   };
