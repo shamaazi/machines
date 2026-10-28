@@ -1,0 +1,50 @@
+name: Publish base images
+on:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: 'New release name (base-YYYY-MM-DD, optionally followed by -N)'
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: base-image-release
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    env:
+      RELEASE: ${{ inputs.release }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Validate new release name
+        run: |
+          [[ "$RELEASE" =~ ^base-[0-9]{4}-[0-9]{2}-[0-9]{2}(-[0-9]+)?$ ]]
+      - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31.11.3
+      - name: Build generic ARM64 images from the locked sources
+        run: |
+          mkdir artifacts
+          for role in dev target; do
+            image=$(nix-build --impure nixos/image.nix --argstr role "$role" --argstr username developer --no-out-link)
+            gzip -n -c "$image" > "artifacts/nixos-$role-aarch64.oci.tar.gz"
+          done
+      - name: Write download pins and publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd artifacts
+          sha256sum ./*.gz > SHA256SUMS
+          jq -n --arg release "$RELEASE" \
+            --arg dev "$(sha256sum nixos-dev-aarch64.oci.tar.gz | cut -d ' ' -f 1)" \
+            --arg target "$(sha256sum nixos-target-aarch64.oci.tar.gz | cut -d ' ' -f 1)" \
+            '{release: $release, dev: {sha256: $dev}, target: {sha256: $target}}' > images.json
+          gh release create "$RELEASE" ./*.gz SHA256SUMS images.json \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "$RELEASE" \
+            --notes 'Generic ARM64 NixOS development and target images. Download pins are in images.json; no application source or machine credentials are included.'
