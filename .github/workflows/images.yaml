@@ -1,4 +1,5 @@
 name: Publish base images
+# Release publication is explicit; ordinary pushes must not publish base images.
 on:
   workflow_dispatch:
     inputs:
@@ -13,6 +14,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   publish:
+    # Build ARM64 Linux natively, matching Apple Silicon guests.
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 45
     permissions:
@@ -30,6 +32,7 @@ jobs:
       - name: Build generic ARM64 images from the locked sources
         run: |
           mkdir artifacts
+          # Use the repository's pin for the build tool as well as the image packages.
           revision=$(jq -r .nodes.nixpkgs.locked.rev devenv.lock)
           nix run "github:NixOS/nixpkgs/$revision#devenv" -- build outputs.dev outputs.target > artifacts/builds.json
           for role in dev target; do
@@ -42,6 +45,7 @@ jobs:
         run: |
           cd artifacts
           sha256sum ./*.gz > SHA256SUMS
+          # bootstrap.sh reads these hashes without requiring GitHub authentication.
           jq -n --arg release "$RELEASE" \
             --arg dev "$(sha256sum nixos-dev-aarch64.oci.tar.gz | cut -d ' ' -f 1)" \
             --arg target "$(sha256sum nixos-target-aarch64.oci.tar.gz | cut -d ' ' -f 1)" \
