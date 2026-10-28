@@ -1,0 +1,9 @@
+{
+  "release": "base-2026-10-28",
+  "dev": {
+    "sha256": "243323c90d8d7a028f8e70b7648985031758f0fa4eb1eee3e22239a8cb976e41"
+  },
+  "target": {
+    "sha256": "f0fe320744cf3f101ecf870350f0db275d1b62f6b08d7572203cc0103f68cad0"
+  }
+}

@@ -54,6 +54,27 @@ ssh_config() {
 }
 case "$action" in
   setup) setup ;;
+  pull)
+    test "$role" != machine
+    setup
+    release=$(plutil -extract release raw -o - "$root/images.json")
+    checksum=$(plutil -extract "$role.sha256" raw -o - "$root/images.json")
+    [[ "$release" =~ ^base-[0-9]{4}-[0-9]{2}-[0-9]{2}(-[0-9]+)?$ && "$checksum" =~ ^[a-f0-9]{64}$ ]]
+    download="$store/images/$release"
+    mkdir -p "$download"
+    archive="$download/nixos-$role-aarch64.oci.tar.gz"
+    if ! { test -f "$archive" && printf '%s  %s\n' "$checksum" "$archive" | shasum -a 256 --check; }; then
+      curl --fail --location --retry 5 --retry-all-errors --continue-at - --output "$archive.download" \
+        "https://github.com/shamaazi/machines/releases/download/$release/nixos-$role-aarch64.oci.tar.gz"
+      printf '%s  %s\n' "$checksum" "$archive.download" | shasum -a 256 --check
+      mv "$archive.download" "$archive"
+    fi
+    expanded="$download/nixos-$role.oci.tar"
+    gzip -dc "$archive" > "$expanded"
+    "$cli" image load --input "$expanded"
+    "$cli" image tag "nixos-$role:local" "nixos-$role:$release"
+    unlink "$expanded"
+    ;;
   build)
     test "$role" != machine
     setup
@@ -86,12 +107,23 @@ case "$action" in
     test "$role" != machine
     setup
     if ! "$cli" machine inspect "$name" >/dev/null 2>&1; then
-      if ! "$cli" image inspect "nixos-$role:local" >/dev/null 2>&1; then
-        bash "$root/machine" "$role" build
+      release=$(plutil -extract release raw -o - "$root/images.json")
+      published="nixos-$role:$release"
+      if [ "$role" = dev ]; then image=${MACHINES_DEV_IMAGE:-$published}; else image=${MACHINES_TARGET_IMAGE:-$published}; fi
+      if [ "$role" = dev ] && [ "$image" = "$published" ] && [ "$username" != developer ]; then
+        echo 'The published dev image uses the developer account. For another user, build a custom image and set MACHINES_DEV_IMAGE=nixos-dev:local.' >&2
+        exit 1
+      fi
+      if ! "$cli" image inspect "$image" >/dev/null 2>&1; then
+        if [ "$image" != "$published" ]; then
+          echo "Custom image $image is unavailable; build or import it explicitly." >&2
+          exit 1
+        fi
+        bash "$root/machine" "$role" pull
       fi
       if [ "$role" = dev ]; then machine_uid=1000; machine_gid=100; else machine_uid=0; machine_gid=0; fi
       env -u SSH_AUTH_SOCK "$cli" machine create --name "$name" --home-mount none \
-        --cpus "$cpus" --memory "$memory" --user "$username" --uid "$machine_uid" --gid "$machine_gid" "nixos-$role:local" || echo 'Checking guest readiness after boot.'
+        --cpus "$cpus" --memory "$memory" --user "$username" --uid "$machine_uid" --gid "$machine_gid" "$image" || echo 'Checking guest readiness after boot.'
     fi
     # machine run also resumes a stopped machine. Existing disks/configurations survive.
     # The readiness loop runs inside the guest.
@@ -165,5 +197,5 @@ CONF
     ssh -n -F "$keys/config" "$role" 'hostname; nproc; free -m; systemctl --failed --no-pager'
     ;;
   stop) "$cli" machine stop "$name" ;;
-  *) echo 'Usage: machine dev|target setup|build|up|pair|shell|forward|status|stop' >&2; exit 2 ;;
+  *) echo 'Usage: machine dev|target setup|pull|build|up|pair|shell|forward|status|stop' >&2; exit 2 ;;
 esac

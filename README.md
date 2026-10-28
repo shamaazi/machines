@@ -13,8 +13,9 @@ curl -fsSL https://raw.githubusercontent.com/shamaazi/machines/main/bootstrap.sh
 ```
 
 It downloads this public repository to `~/projects/machines`, installs the verified
-Apple Container CLI, prepares the NixOS image in a temporary Linux builder,
-starts the persistent dev VM and opens its SSH shell. The Mac only uses its
+Apple Container CLI, downloads and verifies the published ARM64 NixOS base image,
+starts the persistent dev VM and opens its SSH shell. There is no local image
+build and no temporary builder during onboarding. The Mac only uses its
 built-in shell, curl, tar, SSH and system utilities. You can [inspect the script](bootstrap.sh)
 before running it. Rerunning it resumes the existing machine and reconnects;
 it does not pull over an existing checkout or replace the installed system.
@@ -36,7 +37,7 @@ at boot.
 From `~/projects/machines`, use the native `machine` command:
 
 ```sh
-./machine dev up       # create or resume, building a missing base image
+./machine dev up       # create or resume, downloading a missing base image
 ./machine dev shell    # reconnect over SSH
 ./machine dev status
 ./machine dev forward # loopback browser forwarding; keep running
@@ -63,7 +64,8 @@ MACHINES_DEV_MEMORY=12G
 | --- | --- |
 | `MACHINES_HOME` | `~/.local/share/machines` |
 | `MACHINES_DEV_NAME` / `MACHINES_TARGET_NAME` | `dev-build` / `deployment-target` |
-| `MACHINES_USER` | `developer` |
+| `MACHINES_USER` | `developer` (another name requires a custom image for new guests) |
+| `MACHINES_DEV_IMAGE` / `MACHINES_TARGET_IMAGE` | Versioned image references pinned in `images.json` |
 | `MACHINES_DEV_CPUS` / `MACHINES_DEV_MEMORY` | `8` / `10G` |
 | `MACHINES_TARGET_CPUS` / `MACHINES_TARGET_MEMORY` | `4` / `8G` |
 | `MACHINES_DEV_LOCAL_PORT` / `MACHINES_DEV_REMOTE_PORT` | `18081` / `80` |
@@ -108,12 +110,28 @@ without a Nixpkgs input; consuming projects supply their own pin. `target` is th
 generic SSH/base role and `appleTarget` adds Apple's platform. Other platforms
 supply their own hardware/boot configuration. No EC2 disk layout is defined here.
 
-Initial image builds use a Linux bootstrap builder (4 CPUs/6 GiB), stopped after
-a successful build. It only receives the generic NixOS sources and lockfile;
-Nix is never installed on the Mac. Explicit `./machine dev build` and
-`./machine target build` rebuild base images. Normal project builds use the
-persistent dev VM with sandboxing. The optional devenv tasks wrap the same commands
-for contributors who already use devenv; onboarding does not depend on them.
+Default onboarding downloads public GitHub release assets without authentication.
+`images.json` pins the release and SHA-256 of each compressed OCI archive;
+checksums are verified before import. Versioned image names avoid confusing a
+published image with a locally built one. Existing machines keep their installed
+systems when the pin changes. `./machine dev pull` and `./machine target pull`
+explicitly download/import the pinned images.
+
+The **Publish base images** GitHub Actions workflow builds both roles natively on
+an ARM64 Linux runner using this repository's Nixpkgs lock, then publishes a new
+`base-YYYY-MM-DD` release (append `-N` for another release the same day). It
+includes the two archives, `SHA256SUMS` and a generated `images.json`. Maintainers
+run the workflow, test the released images on Apple machine mode, then copy its
+`images.json` into the repository in a reviewed commit. Downloads remain pinned
+until that commit; release assets are never replaced in place.
+
+For image development only, `./machine dev build` and `./machine target build`
+retain the temporary Linux builder (4 CPUs/6 GiB). Select that result explicitly
+with `MACHINES_DEV_IMAGE=nixos-dev:local` or
+`MACHINES_TARGET_IMAGE=nixos-target:local`. Custom dev usernames must match the
+user configured when building. Normal project builds run inside the persistent
+dev VM with sandboxing; the target receives built artifacts. Nix is never needed
+on the Mac. Optional devenv tasks wrap the native commands for contributors.
 
 Apple supplies the kernel, network and virtual disk. This tests NixOS activation,
 services and rollback, not bootloader/kernel installation. Apple may report an
