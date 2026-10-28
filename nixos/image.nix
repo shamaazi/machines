@@ -41,5 +41,5 @@ if output == "system" then
   system
 else
   pkgs.runCommand "${name}.oci.tar" { nativeBuildInputs = [ pkgs.skopeo ]; } ''
-    skopeo --insecure-policy copy docker-archive:${image} oci-archive:$out:${name}:local
+    skopeo --tmpdir "$TMPDIR" --insecure-policy copy docker-archive:${image} oci-archive:$out:${name}:local
   ''
