@@ -7,15 +7,13 @@
 {
   # Local Apple container machine only: the runtime owns kernel, network and disk.
   boot.isContainer = true;
-  networking = {
-    useDHCP = false;
-    resolvconf.enable = false;
-    firewall.enable = false;
-  };
+  networking.useDHCP = false;
+  networking.resolvconf.enable = false;
+  # Apple runs account setup before /etc exists; Bash lets its optional sources fail.
   environment.binsh = lib.mkForce (
     pkgs.writeShellScript "apple-machine-shell" ''
-      export PATH="''${PATH:+$PATH:}${pkgs.coreutils}/bin:${pkgs.gnugrep}/bin:${pkgs.glibc.getent}/bin:/run/current-system/sw/bin"
-        exec ${pkgs.bashInteractive}/bin/sh "$@"
+      export PATH="/nix/var/nix/profiles/system/sw/bin:$PATH"
+      exec ${pkgs.bashInteractive}/bin/bash "$@"
     ''
   );
   # Apple starts shells before /run/current-system is available.
@@ -34,12 +32,13 @@
       fi
     '';
   };
+  # Keep Apple's mounts; NixOS still needs to create missing mounts such as /run.
   system.activationScripts.specialfs = lib.mkForce ''
     specialMount() {
       local device="$1" mountPoint="$2" options="$3" fsType="$4"
       mountpoint -q "$mountPoint" && return 0
       mkdir -p "$mountPoint"
-      mount -t "$fsType" -o "$options" "$device" "$mountPoint" 2>/dev/null || true
+      mount -t "$fsType" -o "$options" "$device" "$mountPoint"
     }
     source ${config.system.build.earlyMountScript}
   '';

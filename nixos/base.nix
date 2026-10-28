@@ -12,7 +12,7 @@
     enable = true;
     startWhenNeeded = false;
     settings = {
-      AuthorizedKeysFile = "/var/lib/machines/authorized_keys";
+      AuthorizedKeysFile = "/etc/ssh/authorized_keys";
       PasswordAuthentication = false;
       KbdInteractiveAuthentication = false;
     };
