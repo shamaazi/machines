@@ -11,7 +11,7 @@ Install [Nix](https://nixos.org/download/), then fetch this public repository
 without GitHub authentication:
 
 ```sh
-nix shell nixpkgs#git nixpkgs#gh nixpkgs#devenv
+nix --extra-experimental-features "nix-command flakes" shell nixpkgs#git nixpkgs#gh nixpkgs#devenv
 git clone https://github.com/shamaazi/machines.git
 cd machines
 devenv tasks list
