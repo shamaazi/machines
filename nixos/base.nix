@@ -1,5 +1,6 @@
 { lib, ... }:
 {
+  imports = [ ../modules/apple.nix ];
   # Applications can supply their server name; dev.nix names development guests.
   networking.hostName = lib.mkDefault "deployment-target";
   # Preserve NixOS state-format defaults across package updates.

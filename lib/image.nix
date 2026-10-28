@@ -13,9 +13,9 @@ let
     tag = "local";
     contents = [
       (pkgs.linkFarm "nixos-root" {
-        # Apple boots /sbin/init; follow the selected generation after deployment.
+        # Boot the selected NixOS generation after deployment or rollback.
         "sbin/init" = "/nix/var/nix/profiles/system/init";
-        # Apple's provisioning shell must exist before NixOS activates /etc.
+        # Provide a shell before NixOS activates /etc.
         "bin/sh" = config.environment.binsh;
         # Number the base generation so the first deployment can roll back to it.
         "nix/var/nix/profiles/system" = "system-1-link";
@@ -30,10 +30,9 @@ in
   imports = [
     # Use NixOS's standard filename metadata for the custom image variant.
     "${modulesPath}/image/file-options.nix"
-    ./apple.nix
   ];
   image.extension = "oci.tar";
-  # DockerTools emits a Docker archive; Apple's importer expects an OCI archive.
+  # Expose a standard OCI archive instead of DockerTools' Docker archive.
   # The source is our local derivation, so Skopeo needs no registry signing policy.
   system.build.image =
     pkgs.runCommand config.image.fileName { nativeBuildInputs = [ pkgs.skopeo ]; }
