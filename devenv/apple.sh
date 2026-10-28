@@ -1,0 +1,158 @@
+#!/usr/bin/env bash
+set -euo pipefail
+root=$(git rev-parse --show-toplevel)
+store="${MACHINES_HOME:-$root/.devenv/machines}"
+cli="$store/installer/Payload/bin/container"
+role=${1:-dev}
+action=${2:-status}
+case "$role" in
+  dev) name=${MACHINES_DEV_NAME:-dev-build}; username=${MACHINES_USER:-developer}; port=2223; cpus=${MACHINES_DEV_CPUS:-8}; memory=${MACHINES_DEV_MEMORY:-10G} ;;
+  target) name=${MACHINES_TARGET_NAME:-deployment-target}; username=root; port=2222; cpus=${MACHINES_TARGET_CPUS:-4}; memory=${MACHINES_TARGET_MEMORY:-8G} ;;
+  machine) ;;
+  *) echo 'Expected dev, target or machine' >&2; exit 2 ;;
+esac
+# Names and users are also used in guest shell commands.
+if [ "$role" != machine ]; then
+  [[ "$name" =~ ^[a-zA-Z0-9_-]+$ && "$username" =~ ^[a-z_][a-z0-9_-]*$ ]] || exit 2
+  keys="$store/ssh/$role"
+fi
+mkdir -p "$store"
+setup() {
+  if [ ! -x "$cli" ]; then
+    curl --fail --location --output "$store/container-1.6.1.pkg" \
+      https://github.com/apple/container/releases/download/1.6.1/container-1.6.1-installer-signed.pkg
+    printf '%s  %s\n' cd47846819f06478d067060efe21e516b562ac0a9af8eecad6d5fea0b556b200 \
+      "$store/container-1.6.1.pkg" | shasum -a 256 --check
+    pkgutil --check-signature "$store/container-1.6.1.pkg"
+    pkgutil --expand-full "$store/container-1.6.1.pkg" "$store/installer"
+  fi
+  env -u SSH_AUTH_SOCK "$cli" system start --install-root "$store/installer/Payload" \
+    --app-root "$store/state" --enable-kernel-install
+  "$cli" system status
+}
+guest() {
+  "$cli" machine run -i -n "$name" --root -- "export PATH=/nix/var/nix/profiles/system/sw/bin:/run/current-system/sw/bin:/bin:/usr/bin; if [ -f /etc/profile ]; then . /etc/profile; fi; export PATH=/nix/var/nix/profiles/system/sw/bin:/run/current-system/sw/bin:\$PATH; $1"
+}
+address() {
+  "$cli" machine inspect "$name" | jq -er '.[0].ipAddress | select(. != null and . != "")'
+}
+# Authorize through Apple's local root transport; no password or forwarded agent.
+authorize() {
+  guest 'install -d -m 0755 /var/lib/machines; touch /var/lib/machines/authorized_keys; cat >> /var/lib/machines/authorized_keys; sort -u /var/lib/machines/authorized_keys -o /var/lib/machines/authorized_keys; chmod 644 /var/lib/machines/authorized_keys'
+}
+ssh_config() {
+  local host_address=$1 host_user=$2 host_port=$3 identity=$4 hosts=$5
+  printf 'Host %s\n  HostName %s\n  User %s\n  Port %s\n  IdentityFile "%s"\n  UserKnownHostsFile "%s"\n  IdentitiesOnly yes\n  StrictHostKeyChecking yes\n  ForwardAgent no\n' \
+    "$role" "$host_address" "$host_user" "$host_port" "$identity" "$hosts"
+}
+case "$action" in
+  setup) setup ;;
+  build)
+    test "$role" != machine
+    setup
+    transfer="$store/build/$role"
+    mkdir -p "$transfer"
+    COPYFILE_DISABLE=1 tar --no-xattrs -cf "$transfer/source.tar" -C "$root" nixos devenv.lock
+    builder="machines-image-builder-$role"
+    # Only the module sources and public lock are shared with this disposable builder.
+    if ! "$cli" inspect "$builder" >/dev/null 2>&1; then
+      "$cli" run -d --name "$builder" --cpus 4 --memory 6G \
+        -v "$transfer:/work" docker.io/nixos/nix:2.31.2 sleep infinity
+    else
+      "$cli" start "$builder" || test "$("$cli" inspect "$builder" | jq -r '.[0].status.state')" = running
+    fi
+    # Variables in this program expand inside the Linux builder.
+    # shellcheck disable=SC2016
+    "$cli" exec "$builder" sh -c '
+      set -eu
+      mkdir -p /srv/machines
+      tar -xf /work/source.tar -C /srv/machines
+      cd /srv/machines
+      nix-build --option sandbox false --option experimental-features "nix-command flakes" \
+        --impure nixos/image.nix --argstr role "$1" --argstr username "$2" -o /work/image
+      cp -fL /work/image /work/image.oci.tar
+    ' sh "$role" "${MACHINES_USER:-developer}"
+    "$cli" image load --input "$transfer/image.oci.tar"
+    "$cli" stop "$builder"
+    ;;
+  up)
+    test "$role" != machine
+    setup
+    if ! "$cli" machine inspect "$name" >/dev/null 2>&1; then
+      if [ "$role" = dev ]; then machine_uid=1000; machine_gid=100; else machine_uid=0; machine_gid=0; fi
+      env -u SSH_AUTH_SOCK "$cli" machine create --name "$name" --home-mount none \
+        --cpus "$cpus" --memory "$memory" --user "$username" --uid "$machine_uid" --gid "$machine_gid" "nixos-$role:local" || echo 'Checking guest readiness after boot.'
+    fi
+    # machine run also resumes a stopped machine. Existing disks/configurations survive.
+    # The readiness loop runs inside the guest.
+    # shellcheck disable=SC2016
+    guest 'set -e; for attempt in $(seq 1 60); do systemctl is-active --quiet multi-user.target 2>/dev/null && exit 0; sleep 1; done; exit 1'
+    mkdir -p "$keys"
+    chmod 700 "$keys"
+    test -f "$keys/id_ed25519" || ssh-keygen -q -t ed25519 -N '' -f "$keys/id_ed25519"
+    authorize < "$keys/id_ed25519.pub"
+    # For adopting machines provisioned elsewhere, start the same key-only listener.
+    # This runtime override never replaces their installed NixOS generation.
+    if [ "$role" = dev ]; then
+      guest "set -e; install -d -m 0700 -o $username -g users /home/$username/.ssh; cat >> /home/$username/.ssh/authorized_keys; chown $username:users /home/$username/.ssh/authorized_keys; chmod 600 /home/$username/.ssh/authorized_keys" < "$keys/id_ed25519.pub"
+    else
+    guest "set -e
+      test -d /home/$username || test '$username' = root
+      cat > /run/machines-sshd.conf <<CONF
+Port $port
+ListenAddress 0.0.0.0
+HostKey /etc/ssh/ssh_host_ed25519_key
+AuthorizedKeysFile /var/lib/machines/authorized_keys
+PermitRootLogin prohibit-password
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+UsePAM yes
+Subsystem sftp internal-sftp
+CONF
+      /run/current-system/sw/bin/sshd -t -f /run/machines-sshd.conf
+      mkdir -p /run/systemd/system/sshd.service.d
+      printf '[Service]\\nExecStart=\\nExecStart=/run/current-system/sw/bin/sshd -D -e -f /run/machines-sshd.conf\\n' > /run/systemd/system/sshd.service.d/machines.conf
+      systemctl daemon-reload
+      systemctl restart sshd
+      unlink /run/systemd/system/sshd.service.d/machines.conf
+      systemctl daemon-reload"
+    fi
+    host_address=$(address)
+    { printf '[%s]:%s ' "$host_address" "$port"; guest 'cat /etc/ssh/ssh_host_ed25519_key.pub'; } > "$keys/known_hosts"
+    ssh_config "$host_address" "$username" "$port" "$keys/id_ed25519" "$keys/known_hosts" > "$keys/config"
+    chmod 600 "$keys/config" "$keys/known_hosts"
+    ssh -n -F "$keys/config" "$role" 'hostname; uname -m'
+    printf 'SSH: ssh -F "%s/config" %s\n' "$keys" "$role"
+    ;;
+  pair)
+    test "$role" = target
+    dev_config="$store/ssh/dev/config"
+    ssh -n -F "$dev_config" dev 'set -e; mkdir -p ~/.local/share/machines/target; chmod 700 ~/.local/share/machines/target; test -f ~/.local/share/machines/target/id_ed25519 || ssh-keygen -q -t ed25519 -N "" -f ~/.local/share/machines/target/id_ed25519'
+    ssh -n -F "$dev_config" dev 'cat ~/.local/share/machines/target/id_ed25519.pub' | authorize
+    host_address=$(address)
+    { printf '[%s]:%s ' "$host_address" "$port"; guest 'cat /etc/ssh/ssh_host_ed25519_key.pub'; } |
+      ssh -F "$dev_config" dev 'cat > ~/.local/share/machines/target/known_hosts; chmod 600 ~/.local/share/machines/target/known_hosts'
+    # Tilde paths are expanded by OpenSSH in the guest, not by the Mac shell.
+    # shellcheck disable=SC2088
+    ssh_config "$host_address" root "$port" '~/.local/share/machines/target/id_ed25519' '~/.local/share/machines/target/known_hosts' |
+      ssh -F "$dev_config" dev 'cat > ~/.local/share/machines/target/ssh_config; chmod 600 ~/.local/share/machines/target/ssh_config'
+    ssh -n -F "$dev_config" dev 'ssh -n -F ~/.local/share/machines/target/ssh_config target hostname'
+    echo 'In the development machine: ssh -F ~/.local/share/machines/target/ssh_config target'
+    ;;
+  forward)
+    if [ "$role" = dev ]; then
+      local_port=${MACHINES_DEV_LOCAL_PORT:-18081}; remote_port=${MACHINES_DEV_REMOTE_PORT:-80}
+    else
+      local_port=${MACHINES_TARGET_LOCAL_PORT:-18080}; remote_port=${MACHINES_TARGET_REMOTE_PORT:-80}
+    fi
+    [[ "$local_port" =~ ^[0-9]+$ && "$remote_port" =~ ^[0-9]+$ ]] || exit 2
+    exec ssh -F "$keys/config" -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 \
+      -L "127.0.0.1:$local_port:127.0.0.1:$remote_port" "$role"
+    ;;
+  status)
+    "$cli" machine inspect "$name"
+    ssh -n -F "$keys/config" "$role" 'hostname; nproc; free -m; systemctl --failed --no-pager'
+    ;;
+  stop) "$cli" machine stop "$name" ;;
+  *) echo 'Use the tasks listed by devenv tasks list' >&2; exit 2 ;;
+esac

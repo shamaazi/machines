@@ -1,0 +1,9 @@
+.devenv/
+.direnv/
+devenv.local.nix
+devenv.local.yaml
+.env
+*.log
+.DS_Store
+
+.pre-commit-config.yaml
