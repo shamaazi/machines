@@ -3,22 +3,19 @@ set -euo pipefail
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 if [ -f "$root/machines.env" ]; then
   set -a
-  # This optional, ignored file contains the owner's local machine settings.
   # shellcheck source=/dev/null
   source "$root/machines.env"
   set +a
 fi
-# Reuse onboarding primitives; target creation and pairing remain explicit actions.
 source "$root/bootstrap.sh"
 role=${1:-dev}
 action=${2:-status}
-# The dev role reserves more resources for builds; the target is a separate server.
 case "$role" in
   dev) name=${MACHINES_DEV_NAME:-dev-build}; username=${MACHINES_USER:-developer}; port=2223; cpus=${MACHINES_DEV_CPUS:-8}; memory=${MACHINES_DEV_MEMORY:-10G} ;;
   target) name=${MACHINES_TARGET_NAME:-deployment-target}; username=root; port=2222; cpus=${MACHINES_TARGET_CPUS:-4}; memory=${MACHINES_TARGET_MEMORY:-8G} ;;
   *) echo 'Expected dev or target' >&2; exit 2 ;;
 esac
-# These values are also used in guest shell commands.
+# These values are interpolated into guest shell commands.
 [[ "$name" =~ ^[a-zA-Z0-9_-]+$ && "$username" =~ ^[a-z_][a-z0-9_-]*$ ]] || exit 2
 keys="$store/ssh/$role"
 case "$action" in
@@ -42,8 +39,6 @@ case "$action" in
     ;;
   shell) exec ssh -t -F "$keys/config" "$role" </dev/tty ;;
   forward)
-    # Browser access stays on Mac loopback through SSH; guest services need no
-    # extra public firewall ports. Separate local ports allow both roles at once.
     if [ "$role" = dev ]; then
       local_port=${MACHINES_DEV_LOCAL_PORT:-18081}; remote_port=${MACHINES_DEV_REMOTE_PORT:-80}
     else

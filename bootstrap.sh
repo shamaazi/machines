@@ -13,7 +13,6 @@ if [ ! -x "$cli" ]; then
   pkgutil --check-signature "$store/container-1.6.1.pkg"
   pkgutil --expand-full "$store/container-1.6.1.pkg" "$store/installer"
 fi
-# Keep this runtime's state separate and avoid forwarding the Mac's SSH agent.
 env -u SSH_AUTH_SOCK "$cli" system start --install-root "$store/installer/Payload" \
   --app-root "$store/state" --enable-kernel-install
 "$cli" system status
@@ -25,25 +24,22 @@ guest() {
 address() {
   "$cli" machine inspect "$name" | plutil -extract 0.ipAddress raw -o - -
 }
-# Authorize through Apple's local root transport; no password or forwarded agent.
 authorize() {
   guest 'cat >> /etc/ssh/authorized_keys; sort -u /etc/ssh/authorized_keys -o /etc/ssh/authorized_keys; chmod 644 /etc/ssh/authorized_keys'
 }
 ssh_config() {
-  # Use dedicated keys and locally pinned host keys rather than agent forwarding.
   local host_address=$1 host_user=$2 host_port=$3 identity=$4 hosts=$5
   printf 'Host %s\n  HostName %s\n  User %s\n  Port %s\n  IdentityFile "%s"\n  UserKnownHostsFile "%s"\n  IdentitiesOnly yes\n  StrictHostKeyChecking yes\n  ForwardAgent no\n' \
     "$role" "$host_address" "$host_user" "$host_port" "$identity" "$hosts"
 }
 load_release() {
-  # Parse public release metadata with macOS tools; no GitHub login or jq needed.
+  # Use macOS's parser so bootstrap needs no extra tools.
   metadata=$(curl --fail --silent --show-error --location \
     https://github.com/shamaazi/machines/releases/download/latest/images.json)
   checksum=$(printf '%s' "$metadata" | plutil -extract "$role.sha256" raw -o - -)
   [[ "$checksum" =~ ^[a-f0-9]{64}$ ]]
 }
 pull_image() {
-  # Resume large downloads and verify cached bytes against the release metadata.
   # Content keys prevent a replaced release from reusing stale files or images.
   download="$store/images/$checksum"
   mkdir -p "$download"
@@ -85,8 +81,7 @@ up() {
       env -u SSH_AUTH_SOCK "$cli" machine create --name "$name" --home-mount none \
         --cpus "$cpus" --memory "$memory" --user "$username" --uid "$machine_uid" --gid "$machine_gid" "$image" || echo 'Checking guest readiness after boot.'
     fi
-    # machine run also resumes a stopped machine. Existing disks/configurations survive.
-    # The readiness loop runs inside the guest.
+    # machine run resumes a stopped guest without replacing its disk.
     # shellcheck disable=SC2016
     guest 'set -e; for attempt in $(seq 1 60); do systemctl is-active --quiet multi-user.target 2>/dev/null && exit 0; sleep 1; done; exit 1'
     mkdir -p "$keys"
@@ -101,7 +96,6 @@ up() {
     ssh -n -F "$keys/config" "$role" 'hostname; uname -m'
     printf 'SSH: ssh -F "%s/config" %s\n' "$keys" "$role"
 }
-# Also serve as machine's shared functions without running interactive onboarding.
 if [[ ${BASH_SOURCE[0]:-$0} == "$0" ]]; then
   if [ "$(uname -s)" != Darwin ] || [ "$(uname -m)" != arm64 ]; then
     echo 'Machines requires an Apple Silicon Mac.' >&2
@@ -116,7 +110,6 @@ if [[ ${BASH_SOURCE[0]:-$0} == "$0" ]]; then
   name=${MACHINES_DEV_NAME:-dev-build}
   username=${MACHINES_USER:-developer}
   port=2223
-  # Leave headroom for development services alongside bounded parallel Nix builds.
   cpus=${MACHINES_DEV_CPUS:-8}
   memory=${MACHINES_DEV_MEMORY:-10G}
   keys="$store/ssh/dev"

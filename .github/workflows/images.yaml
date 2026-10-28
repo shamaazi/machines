@@ -1,5 +1,4 @@
 name: Publish base images
-# Release publication is explicit; ordinary pushes must not publish base images.
 on:
   workflow_dispatch:
 permissions:
@@ -9,7 +8,6 @@ concurrency:
   cancel-in-progress: false
 jobs:
   publish:
-    # Build ARM64 Linux natively, matching Apple Silicon guests.
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 45
     permissions:
@@ -35,7 +33,6 @@ jobs:
         run: |
           cd artifacts
           sha256sum ./*.gz > SHA256SUMS
-          # bootstrap.sh reads these hashes without requiring GitHub authentication.
           jq -n \
             --arg dev "$(sha256sum nixos-dev-aarch64.oci.tar.gz | cut -d ' ' -f 1)" \
             --arg target "$(sha256sum nixos-target-aarch64.oci.tar.gz | cut -d ' ' -f 1)" \
@@ -46,7 +43,7 @@ jobs:
               --title Latest --notes 'Current ARM64 NixOS development and target images. Bootstrap creates only the development machine; targets are provisioned separately.'
           fi
           gh release upload latest ./*.gz SHA256SUMS --clobber --repo "$GITHUB_REPOSITORY"
-          # Publish metadata last; downloads are accepted only if their checksum matches.
+          # Metadata must not advertise new hashes before their image uploads complete.
           gh release upload latest images.json --clobber --repo "$GITHUB_REPOSITORY"
           gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/latest" \
             -f sha="$GITHUB_SHA" -F force=true
