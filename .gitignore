@@ -5,5 +5,6 @@ devenv.local.yaml
 .env
 *.log
 .DS_Store
+machines.env
 
 .pre-commit-config.yaml

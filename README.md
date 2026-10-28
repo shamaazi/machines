@@ -37,6 +37,7 @@ From `~/projects/machines`, use the native `machine` command:
 
 ```sh
 ./machine dev up       # create or resume, building a missing base image
+./machine dev shell    # reconnect over SSH
 ./machine dev status
 ./machine dev forward # loopback browser forwarding; keep running
 ./machine dev stop    # preserve the disk, release memory
@@ -50,7 +51,13 @@ For example, an app configured for port 18081 needs:
 MACHINES_DEV_REMOTE_PORT=18081 ./machine dev forward
 ```
 
-Configuration uses optional environment variables, not a required Nix file:
+Configuration uses optional environment variables, not a required Nix file.
+Persistent settings can go in an ignored `machines.env` beside the command;
+it is sourced as shell configuration before each command:
+
+```sh
+MACHINES_DEV_MEMORY=12G
+```
 
 | Variable | Default |
 | --- | --- |

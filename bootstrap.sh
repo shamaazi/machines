@@ -31,6 +31,4 @@ fi
 
 # Bootstrapping only needs macOS tools; all Nix builds run in Linux.
 bash "$source_directory/machine" dev up </dev/null
-store="${MACHINES_HOME:-$HOME/.local/share/machines}"
-printf '\nOpening the development machine. Reconnect with:\nssh -F "%s/ssh/dev/config" dev\n\n' "$store"
-exec ssh -t -F "$store/ssh/dev/config" dev </dev/tty
+exec bash "$source_directory/machine" dev shell </dev/tty
