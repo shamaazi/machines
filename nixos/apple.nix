@@ -18,11 +18,8 @@
         exec ${pkgs.bashInteractive}/bin/sh "$@"
     ''
   );
+  # Apple starts shells before /run/current-system is available.
   users.users.root.shell = "${pkgs.bashInteractive}/bin/bash";
-  nix.settings.experimental-features = [
-    "nix-command"
-    "flakes"
-  ];
   # Apple machine mode always mounts an agent socket. This server needs none.
   systemd.services.machine-isolation = {
     wantedBy = [ "multi-user.target" ];

@@ -31,7 +31,7 @@ jobs:
         run: |
           mkdir artifacts
           for role in dev target; do
-            image=$(nix-build --impure nixos/image.nix --argstr role "$role" --argstr username developer --no-out-link)
+            image=$(nix-build --impure nixos/image.nix --argstr role "$role" --no-out-link)
             gzip -n -c "$image" > "artifacts/nixos-$role-aarch64.oci.tar.gz"
           done
       - name: Write download pins and publish

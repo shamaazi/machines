@@ -1,4 +1,3 @@
-{ pkgs, ... }:
 {
   system.stateVersion = "26.05";
   nix.settings = {
@@ -9,8 +8,13 @@
     sandbox = true;
     sandbox-fallback = false;
   };
-  environment.systemPackages = [
-    pkgs.curl
-    pkgs.jq
-  ];
+  services.openssh = {
+    enable = true;
+    startWhenNeeded = false;
+    settings = {
+      AuthorizedKeysFile = "/var/lib/machines/authorized_keys";
+      PasswordAuthentication = false;
+      KbdInteractiveAuthentication = false;
+    };
+  };
 }

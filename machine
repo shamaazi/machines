@@ -15,14 +15,11 @@ action=${2:-status}
 case "$role" in
   dev) name=${MACHINES_DEV_NAME:-dev-build}; username=${MACHINES_USER:-developer}; port=2223; cpus=${MACHINES_DEV_CPUS:-8}; memory=${MACHINES_DEV_MEMORY:-10G} ;;
   target) name=${MACHINES_TARGET_NAME:-deployment-target}; username=root; port=2222; cpus=${MACHINES_TARGET_CPUS:-4}; memory=${MACHINES_TARGET_MEMORY:-8G} ;;
-  machine) ;;
-  *) echo 'Expected dev, target or machine' >&2; exit 2 ;;
+  *) echo 'Expected dev or target' >&2; exit 2 ;;
 esac
-# Names and users are also used in guest shell commands.
-if [ "$role" != machine ]; then
-  [[ "$name" =~ ^[a-zA-Z0-9_-]+$ && "$username" =~ ^[a-z_][a-z0-9_-]*$ ]] || exit 2
-  keys="$store/ssh/$role"
-fi
+# These values are also used in guest shell commands.
+[[ "$name" =~ ^[a-zA-Z0-9_-]+$ && "$username" =~ ^[a-z_][a-z0-9_-]*$ ]] || exit 2
+keys="$store/ssh/$role"
 mkdir -p "$store"
 setup() {
   if [ ! -x "$cli" ]; then
@@ -38,7 +35,7 @@ setup() {
   "$cli" system status
 }
 guest() {
-  "$cli" machine run -i -n "$name" --root -- "export PATH=/nix/var/nix/profiles/system/sw/bin:/run/current-system/sw/bin:/bin:/usr/bin; if [ -f /etc/profile ]; then . /etc/profile; fi; export PATH=/nix/var/nix/profiles/system/sw/bin:/run/current-system/sw/bin:\$PATH; $1"
+  "$cli" machine run -i -n "$name" --root -- "export PATH=/nix/var/nix/profiles/system/sw/bin:/run/current-system/sw/bin; $1"
 }
 address() {
   "$cli" machine inspect "$name" | plutil -extract 0.ipAddress raw -o - -
@@ -53,9 +50,7 @@ ssh_config() {
     "$role" "$host_address" "$host_user" "$host_port" "$identity" "$hosts"
 }
 case "$action" in
-  setup) setup ;;
   pull)
-    test "$role" != machine
     setup
     release=$(plutil -extract release raw -o - "$root/images.json")
     checksum=$(plutil -extract "$role.sha256" raw -o - "$root/images.json")
@@ -75,48 +70,19 @@ case "$action" in
     "$cli" image tag "nixos-$role:local" "nixos-$role:$release"
     unlink "$expanded"
     ;;
-  build)
-    test "$role" != machine
-    setup
-    transfer="$store/build/$role"
-    mkdir -p "$transfer"
-    COPYFILE_DISABLE=1 tar --no-xattrs -cf "$transfer/source.tar" -C "$root" nixos devenv.lock
-    builder="machines-image-builder-$role"
-    # Only the module sources and public lock are shared with this disposable builder.
-    if ! "$cli" inspect "$builder" >/dev/null 2>&1; then
-      "$cli" run -d --name "$builder" --cpus 4 --memory 6G \
-        -v "$transfer:/work" docker.io/nixos/nix:2.31.2 sleep infinity
-    else
-      "$cli" start "$builder" || test "$("$cli" inspect "$builder" | plutil -extract 0.status.state raw -o - -)" = running
-    fi
-    # Variables in this program expand inside the Linux builder.
-    # shellcheck disable=SC2016
-    "$cli" exec "$builder" sh -c '
-      set -eu
-      mkdir -p /srv/machines
-      tar -xf /work/source.tar -C /srv/machines
-      cd /srv/machines
-      nix-build --option sandbox false --option experimental-features "nix-command flakes" \
-        --impure nixos/image.nix --argstr role "$1" --argstr username "$2" -o /work/image
-      cp -fL /work/image /work/image.oci.tar
-    ' sh "$role" "${MACHINES_USER:-developer}"
-    "$cli" image load --input "$transfer/image.oci.tar"
-    "$cli" stop "$builder"
-    ;;
   up)
-    test "$role" != machine
     setup
     if ! "$cli" machine inspect "$name" >/dev/null 2>&1; then
       release=$(plutil -extract release raw -o - "$root/images.json")
       published="nixos-$role:$release"
       if [ "$role" = dev ]; then image=${MACHINES_DEV_IMAGE:-$published}; else image=${MACHINES_TARGET_IMAGE:-$published}; fi
       if [ "$role" = dev ] && [ "$image" = "$published" ] && [ "$username" != developer ]; then
-        echo 'The published dev image uses the developer account. For another user, build a custom image and set MACHINES_DEV_IMAGE=nixos-dev:local.' >&2
+        echo 'The published dev image uses the developer account. Set MACHINES_USER=developer.' >&2
         exit 1
       fi
       if ! "$cli" image inspect "$image" >/dev/null 2>&1; then
         if [ "$image" != "$published" ]; then
-          echo "Custom image $image is unavailable; build or import it explicitly." >&2
+          echo "Import custom image $image first." >&2
           exit 1
         fi
         bash "$root/machine" "$role" pull
@@ -133,32 +99,6 @@ case "$action" in
     chmod 700 "$keys"
     test -f "$keys/id_ed25519" || ssh-keygen -q -t ed25519 -N '' -f "$keys/id_ed25519"
     authorize < "$keys/id_ed25519.pub"
-    # For adopting machines provisioned elsewhere, start the same key-only listener.
-    # This runtime override never replaces their installed NixOS generation.
-    if [ "$role" = dev ]; then
-      guest "set -e; install -d -m 0700 -o $username -g users /home/$username/.ssh; cat >> /home/$username/.ssh/authorized_keys; chown $username:users /home/$username/.ssh/authorized_keys; chmod 600 /home/$username/.ssh/authorized_keys" < "$keys/id_ed25519.pub"
-    else
-    guest "set -e
-      test -d /home/$username || test '$username' = root
-      cat > /run/machines-sshd.conf <<CONF
-Port $port
-ListenAddress 0.0.0.0
-HostKey /etc/ssh/ssh_host_ed25519_key
-AuthorizedKeysFile /var/lib/machines/authorized_keys
-PermitRootLogin prohibit-password
-PasswordAuthentication no
-KbdInteractiveAuthentication no
-UsePAM yes
-Subsystem sftp internal-sftp
-CONF
-      /run/current-system/sw/bin/sshd -t -f /run/machines-sshd.conf
-      mkdir -p /run/systemd/system/sshd.service.d
-      printf '[Service]\\nExecStart=\\nExecStart=/run/current-system/sw/bin/sshd -D -e -f /run/machines-sshd.conf\\n' > /run/systemd/system/sshd.service.d/machines.conf
-      systemctl daemon-reload
-      systemctl restart sshd
-      unlink /run/systemd/system/sshd.service.d/machines.conf
-      systemctl daemon-reload"
-    fi
     host_address=$(address)
     { printf '[%s]:%s ' "$host_address" "$port"; guest 'cat /etc/ssh/ssh_host_ed25519_key.pub'; } > "$keys/known_hosts"
     ssh_config "$host_address" "$username" "$port" "$keys/id_ed25519" "$keys/known_hosts" > "$keys/config"
@@ -194,8 +134,8 @@ CONF
     ;;
   status)
     "$cli" machine inspect "$name"
-    ssh -n -F "$keys/config" "$role" 'hostname; nproc; free -m; systemctl --failed --no-pager'
+    ssh -n -F "$keys/config" "$role" 'hostname; systemctl --failed --no-pager'
     ;;
   stop) "$cli" machine stop "$name" ;;
-  *) echo 'Usage: machine dev|target setup|pull|build|up|pair|shell|forward|status|stop' >&2; exit 2 ;;
+  *) echo 'Usage: machine dev|target up|pull|pair|shell|forward|status|stop' >&2; exit 2 ;;
 esac

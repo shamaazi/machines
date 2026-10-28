@@ -1,10 +1,20 @@
 {
   role ? "target",
-  username ? "developer",
-  output ? "image",
 }:
 let
-  evaluated = import ./system.nix { inherit role username; };
+  lock = builtins.fromJSON (builtins.readFile ../devenv.lock);
+  source = builtins.getFlake "github:NixOS/nixpkgs/${lock.nodes.nixpkgs.locked.rev}";
+  evaluated = import "${source}/nixos/lib/eval-config.nix" {
+    system = "aarch64-linux";
+    modules =
+      if role == "dev" then
+        [
+          ./apple.nix
+          ./dev.nix
+        ]
+      else
+        [ ./apple-target.nix ];
+  };
   inherit (evaluated) pkgs;
   system = evaluated.config.system.build.toplevel;
   registration = pkgs.closureInfo { rootPaths = [ system ]; };
@@ -37,9 +47,10 @@ let
     };
   };
 in
-if output == "system" then
-  system
-else
-  pkgs.runCommand "${name}.oci.tar" { nativeBuildInputs = [ pkgs.skopeo ]; } ''
-    skopeo --tmpdir "$TMPDIR" --insecure-policy copy docker-archive:${image} oci-archive:$out:${name}:local
-  ''
+assert builtins.elem role [
+  "dev"
+  "target"
+];
+pkgs.runCommand "${name}.oci.tar" { nativeBuildInputs = [ pkgs.skopeo ]; } ''
+  skopeo --tmpdir "$TMPDIR" --insecure-policy copy docker-archive:${image} oci-archive:$out:${name}:local
+''
