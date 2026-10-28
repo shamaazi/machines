@@ -1,116 +1,118 @@
 # Machines
 
 Persistent ARM64 NixOS development/build machines and local deployment targets,
-provisioned with devenv and Apple Container machine mode. Requires Apple Silicon,
-macOS 26 and Nix. Application repositories supply their own devenv toolchain,
-packages and deployment configuration.
+using Apple Container machine mode. Requires Apple Silicon and macOS 26.
+**Nix, devenv and application toolchains run inside Linux, not on the Mac.**
 
 ## Start on a fresh laptop
 
-Install [Nix](https://nixos.org/download/), then fetch this public repository
-without GitHub authentication:
+Run this in the Mac's terminal. No Nix, Git or GitHub login is needed:
 
 ```sh
-nix --extra-experimental-features "nix-command flakes" shell nixpkgs#git nixpkgs#gh nixpkgs#devenv
-git clone https://github.com/shamaazi/machines.git
-cd machines
-devenv tasks list
-devenv tasks run dev:build --show-output
-devenv tasks run dev:up --show-output
-devenv shell
-ssh -F "$MACHINES_HOME/ssh/dev/config" dev
+curl -fsSL https://raw.githubusercontent.com/shamaazi/machines/main/bootstrap.sh | bash
 ```
 
-The base development machine includes **git, gh and devenv**, plus SSH and basic
-Linux tools. Inside it, authenticate GitHub if your application repository is
-private, clone that repository, and use its normal `devenv shell`, `devenv up` and
-`devenv test` commands. Application runtimes belong to that project's devenv.
-Editors can connect using the SSH configuration printed by `dev:up`.
+It downloads this public repository to `~/projects/machines`, installs the verified
+Apple Container CLI, prepares the NixOS image in a temporary Linux builder,
+starts the persistent dev VM and opens its SSH shell. The Mac only uses its
+built-in shell, curl, tar, SSH and system utilities. You can [inspect the script](bootstrap.sh)
+before running it. Rerunning it resumes the existing machine and reconnects;
+it does not pull over an existing checkout or replace the installed system.
+Set `MACHINES_REPO` to choose a different source directory.
 
-The dev machine defaults to 8 CPUs/10 GiB. The target defaults to 4 CPUs/8 GiB.
-Their persistent disks retain checkouts, Nix caches and service data. No Mac home
-or application source is mounted or copied into either machine. Host SSH-agent
-forwarding is disabled, and the Apple-mounted agent socket is detached at boot.
+Inside the dev VM, **git, gh and devenv** are already installed. Authenticate
+GitHub when needed, clone your application repository and run its normal
+`devenv shell`, `devenv up` and `devenv test` commands. Application runtimes and
+services belong to that project's devenv. A remote editor connects with the
+SSH configuration printed during setup and edits the VM's checkout directly.
+
+The dev VM defaults to 8 CPUs/10 GiB. Its disk retains checkouts, Nix caches and
+service data. No Mac home or application source is mounted or copied into it.
+SSH-agent forwarding is disabled and the Apple-mounted agent socket is detached
+at boot.
+
+## Mac commands
+
+From `~/projects/machines`, use the native `machine` command:
+
+```sh
+./machine dev up       # create or resume, building a missing base image
+./machine dev status
+./machine dev forward # loopback browser forwarding; keep running
+./machine dev stop    # preserve the disk, release memory
+```
+
+Defaults forward Mac port 18081 to guest port 80. Match the application's port
+using `MACHINES_DEV_REMOTE_PORT`, and optionally `MACHINES_DEV_LOCAL_PORT`.
+For example, an app configured for port 18081 needs:
+
+```sh
+MACHINES_DEV_REMOTE_PORT=18081 ./machine dev forward
+```
+
+Configuration uses optional environment variables, not a required Nix file:
+
+| Variable | Default |
+| --- | --- |
+| `MACHINES_HOME` | `~/.local/share/machines` |
+| `MACHINES_DEV_NAME` / `MACHINES_TARGET_NAME` | `dev-build` / `deployment-target` |
+| `MACHINES_USER` | `developer` |
+| `MACHINES_DEV_CPUS` / `MACHINES_DEV_MEMORY` | `8` / `10G` |
+| `MACHINES_TARGET_CPUS` / `MACHINES_TARGET_MEMORY` | `4` / `8G` |
+| `MACHINES_DEV_LOCAL_PORT` / `MACHINES_DEV_REMOTE_PORT` | `18081` / `80` |
+| `MACHINES_TARGET_LOCAL_PORT` / `MACHINES_TARGET_REMOTE_PORT` | `18080` / `80` |
+
+Resource settings apply when creating a machine. Apple's `machine set` can change
+CPU/memory allocations after restart. `*:up` refreshes SSH addresses after a
+restart; repeat target pairing if its address changed. To adopt existing machines,
+set their existing `MACHINES_HOME`, names and development user. Adoption only
+resumes the guests and configures SSH; it preserves their installed systems,
+users, disks and application data. Temporary SSH adoption settings last until
+reboot/activation, so installed systems must retain compatible SSH configuration.
 
 ## Deployment target
 
+The separate target defaults to 4 CPUs/8 GiB:
+
 ```sh
-devenv tasks run target:build --show-output
-devenv tasks run target:up --show-output
-devenv tasks run target:pair --show-output
+./machine target up
+./machine target pair
 ```
 
-Pairing creates a deployment key **inside the dev machine**, authorizes only its
-public key on the target, and pins the target host key through Apple's local
-transport. In the dev machine, the resulting SSH configuration is
-`~/.local/share/machines/target/ssh_config`, with destination `target`.
-It is independent of any application checkout.
+Pairing creates a deployment key **inside the dev VM**, authorizes its public key
+on the target and pins the target host key through Apple's local transport.
+Inside the dev VM, use `~/.local/share/machines/target/ssh_config`, destination
+`target`. Credentials belong to the machine, independently of application checkouts.
 
-Application deployment must compose its NixOS services with
-`inputs.machines.nixosModules.appleTarget` on every deployment. This module
-provides the Apple platform and key-only target SSH on port 2222. Build the
-application and system generation in the dev machine, then transfer and activate
-with the application's deployment tooling. The target does not need a devenv
-shell or source checkout to run installed services.
+The application repository composes its NixOS services with
+`inputs.machines.nixosModules.appleTarget` on every local deployment. This provides
+the Apple platform and key-only target SSH on port 2222. Build applications and
+NixOS generations inside the dev VM, then transfer/activate with the application's
+deployment tooling. The target needs no source checkout or devenv shell.
 
-The flake exports `base`, `development`, `target`, `apple` and `appleTarget`
-NixOS modules. It has no Nixpkgs input: the consuming project supplies its own
-pin. `target` is the generic SSH/base role; `appleTarget` adds Apple's platform.
-Other platforms supply their own hardware/boot modules alongside `target`.
-No EC2 provisioning or production disk layout is defined here.
+`./machine target forward` defaults to Mac port 18080 and guest port 80; select
+`MACHINES_TARGET_REMOTE_PORT` to match the deployed application. `target status`
+and `target stop` work like their dev counterparts.
 
-## Local settings and operation
+## NixOS modules and builds
 
-State defaults to `.devenv/machines`. For a durable location outside the checkout,
-create an ignored `devenv.local.nix` before setup:
+The flake exports `base`, `development`, `target`, `apple` and `appleTarget` modules
+without a Nixpkgs input; consuming projects supply their own pin. `target` is the
+generic SSH/base role and `appleTarget` adds Apple's platform. Other platforms
+supply their own hardware/boot configuration. No EC2 disk layout is defined here.
 
-```nix
-{ ... }: {
-  env = {
-    MACHINES_HOME = "/absolute/path/to/machine-state";
-    MACHINES_USER = "developer";
-    MACHINES_DEV_CPUS = "8";
-    MACHINES_DEV_MEMORY = "10G";
-    MACHINES_TARGET_CPUS = "4";
-    MACHINES_TARGET_MEMORY = "8G";
-    MACHINES_DEV_LOCAL_PORT = "18081";
-    MACHINES_DEV_REMOTE_PORT = "80";
-    MACHINES_TARGET_LOCAL_PORT = "18080";
-    MACHINES_TARGET_REMOTE_PORT = "80";
-  };
-}
-```
+Initial image builds use a Linux bootstrap builder (4 CPUs/6 GiB), stopped after
+a successful build. It only receives the generic NixOS sources and lockfile;
+Nix is never installed on the Mac. Explicit `./machine dev build` and
+`./machine target build` rebuild base images. Normal project builds use the
+persistent dev VM with sandboxing. The optional devenv tasks wrap the same commands
+for contributors who already use devenv; onboarding does not depend on them.
 
-`machine:setup` verifies and extracts Apple's signed 1.6.1 CLI into that state
-directory, then starts its private runtime. Apple may report an initial user-setup
-race while NixOS activates; `*:up` checks guest readiness and SSH before succeeding. Image builds use a separate Linux
-bootstrap builder (4 CPUs/6 GiB), stopped after a successful build. This builder
-only receives the generic NixOS modules and lockfile. Normal project builds use
-the persistent development machine with Nix sandboxing.
+Apple supplies the kernel, network and virtual disk. This tests NixOS activation,
+services and rollback, not bootloader/kernel installation. Apple may report an
+early user-setup race while NixOS activates; `up` waits for readiness and verifies
+SSH before succeeding. Stopping unused guests releases their allocated memory.
+System rollback never restores databases/files; backups and data migration policy
+belong to the application owner.
 
-`dev:forward` and `target:forward` run loopback-only SSH port forwarding in the
-foreground; select ports matching the application's configuration. `dev:status`
-and `target:status` inspect resources and failed systemd units. `dev:stop` and
-`target:stop` stop guests while preserving their disks. Rerun `*:up` after a
-restart to refresh pinned SSH addresses, then `target:pair` if its address changed.
-Resource settings apply when creating a machine. Apple's `machine set` can change
-CPU/memory for an existing machine after restart.
-
-To adopt existing machines, set `MACHINES_HOME` to their existing runtime state,
-`MACHINES_DEV_NAME` and `MACHINES_TARGET_NAME` to their names, and `MACHINES_USER`
-to the existing development user. `*:up` resumes and configures SSH; it never
-installs a base generation over an existing machine. Its SSH adoption override
-lasts until reboot or NixOS activation, so deployed targets must include the
-exported module and adopted dev machines must retain compatible SSH configuration.
-It does not migrate users, disks or application data.
-
-Apple supplies the kernel, network and virtual disk. This exercises NixOS
-activation, services and rollback, but not bootloader/kernel installation.
-Machine mode also retains allocated memory more aggressively than native macOS
-processes; stopping an unused guest releases it. System rollback never restores
-application databases or files. Backups and data migration policy belong to the
-application owner.
-
-Machine state, private keys, local settings and logs are ignored. Do not commit
-credentials. Fresh-laptop public access needs no GitHub login; private projects
-and `gh` operations may still require authentication.
+Private keys, machine state and local configuration must never be committed.

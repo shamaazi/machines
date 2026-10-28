@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
-root=$(git rev-parse --show-toplevel)
-store="${MACHINES_HOME:-$root/.devenv/machines}"
+root=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+store="${MACHINES_HOME:-$HOME/.local/share/machines}"
 cli="$store/installer/Payload/bin/container"
 role=${1:-dev}
 action=${2:-status}
@@ -34,7 +34,7 @@ guest() {
   "$cli" machine run -i -n "$name" --root -- "export PATH=/nix/var/nix/profiles/system/sw/bin:/run/current-system/sw/bin:/bin:/usr/bin; if [ -f /etc/profile ]; then . /etc/profile; fi; export PATH=/nix/var/nix/profiles/system/sw/bin:/run/current-system/sw/bin:\$PATH; $1"
 }
 address() {
-  "$cli" machine inspect "$name" | jq -er '.[0].ipAddress | select(. != null and . != "")'
+  "$cli" machine inspect "$name" | plutil -extract 0.ipAddress raw -o - -
 }
 # Authorize through Apple's local root transport; no password or forwarded agent.
 authorize() {
@@ -59,7 +59,7 @@ case "$action" in
       "$cli" run -d --name "$builder" --cpus 4 --memory 6G \
         -v "$transfer:/work" docker.io/nixos/nix:2.31.2 sleep infinity
     else
-      "$cli" start "$builder" || test "$("$cli" inspect "$builder" | jq -r '.[0].status.state')" = running
+      "$cli" start "$builder" || test "$("$cli" inspect "$builder" | plutil -extract 0.status.state raw -o - -)" = running
     fi
     # Variables in this program expand inside the Linux builder.
     # shellcheck disable=SC2016
@@ -79,6 +79,9 @@ case "$action" in
     test "$role" != machine
     setup
     if ! "$cli" machine inspect "$name" >/dev/null 2>&1; then
+      if ! "$cli" image inspect "nixos-$role:local" >/dev/null 2>&1; then
+        bash "$root/machine" "$role" build
+      fi
       if [ "$role" = dev ]; then machine_uid=1000; machine_gid=100; else machine_uid=0; machine_gid=0; fi
       env -u SSH_AUTH_SOCK "$cli" machine create --name "$name" --home-mount none \
         --cpus "$cpus" --memory "$memory" --user "$username" --uid "$machine_uid" --gid "$machine_gid" "nixos-$role:local" || echo 'Checking guest readiness after boot.'
@@ -154,5 +157,5 @@ CONF
     ssh -n -F "$keys/config" "$role" 'hostname; nproc; free -m; systemctl --failed --no-pager'
     ;;
   stop) "$cli" machine stop "$name" ;;
-  *) echo 'Use the tasks listed by devenv tasks list' >&2; exit 2 ;;
+  *) echo 'Usage: machine dev|target setup|build|up|pair|forward|status|stop' >&2; exit 2 ;;
 esac

@@ -14,7 +14,7 @@
     openssh
     nixfmt
   ];
-  env.MACHINES_HOME = lib.mkDefault "${config.git.root}/.devenv/machines";
+  env.MACHINES_HOME = lib.mkDefault "${builtins.getEnv "HOME"}/.local/share/machines";
   git-hooks.hooks = {
     nixfmt.enable = true;
     statix.enable = true;
@@ -26,7 +26,7 @@
     lib.mapAttrs
       (name: description: {
         inherit description;
-        exec = "bash ${config.git.root}/devenv/apple.sh ${lib.replaceStrings [ ":" ] [ " " ] name}";
+        exec = "bash ${config.git.root}/machine ${lib.replaceStrings [ ":" ] [ " " ] name}";
       })
       {
         "machine:setup" = "Install and start the private Apple Container runtime";
