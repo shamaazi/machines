@@ -154,7 +154,7 @@ if [[ ${BASH_SOURCE[0]:-$0} == "$0" ]]; then
     echo 'Invalid machine name or username.' >&2
     exit 2
   fi
-  # With curl | bash, provisioning must not consume script input; SSH uses the TTY.
+  # With curl | bash, provisioning must not consume script input; the shell uses the TTY.
   up </dev/null
-  exec ssh -t -F "$keys/config" dev </dev/tty
+  exec "$cli" machine run -it -n "$name" </dev/tty
 fi
