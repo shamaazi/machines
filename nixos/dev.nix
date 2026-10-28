@@ -1,8 +1,8 @@
-{ lib, pkgs, ... }:
+{ pkgs, ... }:
 {
   imports = [ ./base.nix ];
-  # Give fresh guests a role name while allowing a caller to override it.
-  networking.hostName = lib.mkDefault "dev-build";
+  # Name development guests distinctly from base deployment targets.
+  networking.hostName = "dev-build";
   users.users.developer = {
     isNormalUser = true;
     # Match bootstrap's fixed guest identity, independent of the Mac user's UID.

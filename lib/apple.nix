@@ -10,6 +10,8 @@
   # Apple supplies the address and DNS file; a second DHCP/DNS manager conflicts.
   networking.useDHCP = false;
   networking.resolvconf.enable = false;
+  # Match the local target transport; the dev configuration selects its own port.
+  services.openssh.ports = lib.mkDefault [ 2222 ];
   # Apple runs account setup before /etc exists. Bash (not sh mode) lets its
   # optional sources fail; the image's system profile supplies tools before /run.
   environment.binsh = lib.mkForce (
