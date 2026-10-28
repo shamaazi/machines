@@ -38,20 +38,19 @@ ssh_config() {
 load_release() {
   # Parse public release metadata with macOS tools; no GitHub login or jq needed.
   metadata=$(curl --fail --silent --show-error --location \
-    https://github.com/shamaazi/machines/releases/latest/download/images.json)
-  release=$(printf '%s' "$metadata" | plutil -extract release raw -o - -)
+    https://github.com/shamaazi/machines/releases/download/latest/images.json)
   checksum=$(printf '%s' "$metadata" | plutil -extract "$role.sha256" raw -o - -)
-  # Validate metadata before using it in download URLs and checksum commands.
-  [[ "$release" =~ ^base-[0-9]{4}-[0-9]{2}-[0-9]{2}(-[0-9]+)?$ && "$checksum" =~ ^[a-f0-9]{64}$ ]]
+  [[ "$checksum" =~ ^[a-f0-9]{64}$ ]]
 }
 pull_image() {
   # Resume large downloads and verify cached bytes against the release metadata.
-  download="$store/images/$release"
+  # Content keys prevent a replaced release from reusing stale files or images.
+  download="$store/images/$checksum"
   mkdir -p "$download"
   archive="$download/nixos-$role-aarch64.oci.tar.gz"
   if ! { test -f "$archive" && printf '%s  %s\n' "$checksum" "$archive" | shasum -a 256 --check; }; then
     curl --fail --location --retry 5 --retry-all-errors --continue-at - --output "$archive.download" \
-      "https://github.com/shamaazi/machines/releases/download/$release/nixos-$role-aarch64.oci.tar.gz"
+      "https://github.com/shamaazi/machines/releases/download/latest/nixos-$role-aarch64.oci.tar.gz"
     printf '%s  %s\n' "$checksum" "$archive.download" | shasum -a 256 --check
     mv "$archive.download" "$archive"
   fi
@@ -59,14 +58,14 @@ pull_image() {
   expanded="$download/nixos-$role.oci.tar"
   gzip -dc "$archive" > "$expanded"
   "$cli" image load --input "$expanded"
-  "$cli" image tag "nixos-$role:local" "nixos-$role:$release"
+  "$cli" image tag "nixos-$role:local" "nixos-$role:$checksum"
   unlink "$expanded"
 }
 up() {
     setup
     if ! "$cli" machine inspect "$name" >/dev/null 2>&1; then
       load_release
-      published="nixos-$role:$release"
+      published="nixos-$role:$checksum"
       if [ "$role" = dev ]; then image=${MACHINES_DEV_IMAGE:-$published}; else image=${MACHINES_TARGET_IMAGE:-$published}; fi
       if [ "$role" = dev ] && [ "$image" = "$published" ] && [ "$username" != developer ]; then
         echo 'The published dev image uses the developer account. Set MACHINES_USER=developer.' >&2

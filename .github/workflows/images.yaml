@@ -2,11 +2,6 @@ name: Publish base images
 # Release publication is explicit; ordinary pushes must not publish base images.
 on:
   workflow_dispatch:
-    inputs:
-      release:
-        description: 'New release name (base-YYYY-MM-DD, optionally followed by -N)'
-        required: true
-        type: string
 permissions:
   contents: read
 concurrency:
@@ -19,15 +14,10 @@ jobs:
     timeout-minutes: 45
     permissions:
       contents: write
-    env:
-      RELEASE: ${{ inputs.release }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Validate new release name
-        run: |
-          [[ "$RELEASE" =~ ^base-[0-9]{4}-[0-9]{2}-[0-9]{2}(-[0-9]+)?$ ]]
       - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31.11.3
       - name: Build generic ARM64 images from the locked sources
         run: |
@@ -46,11 +36,17 @@ jobs:
           cd artifacts
           sha256sum ./*.gz > SHA256SUMS
           # bootstrap.sh reads these hashes without requiring GitHub authentication.
-          jq -n --arg release "$RELEASE" \
+          jq -n \
             --arg dev "$(sha256sum nixos-dev-aarch64.oci.tar.gz | cut -d ' ' -f 1)" \
             --arg target "$(sha256sum nixos-target-aarch64.oci.tar.gz | cut -d ' ' -f 1)" \
-            '{release: $release, dev: {sha256: $dev}, target: {sha256: $target}}' > images.json
-          gh release create "$RELEASE" ./*.gz SHA256SUMS images.json \
-            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
-            --title "$RELEASE" \
-            --notes 'Generic ARM64 NixOS development and target images. Download pins are in images.json; no application source or machine credentials are included.'
+            '{dev: {sha256: $dev}, target: {sha256: $target}}' > images.json
+          # GitHub requires a tag; reuse one release and move its tag on each publish.
+          if ! gh release view latest --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create latest --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+              --title Latest --notes 'Current ARM64 NixOS development and target images. Bootstrap creates only the development machine; targets are provisioned separately.'
+          fi
+          gh release upload latest ./*.gz SHA256SUMS --clobber --repo "$GITHUB_REPOSITORY"
+          # Publish metadata last; downloads are accepted only if their checksum matches.
+          gh release upload latest images.json --clobber --repo "$GITHUB_REPOSITORY"
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/latest" \
+            -f sha="$GITHUB_SHA" -F force=true
