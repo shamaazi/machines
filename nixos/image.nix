@@ -16,29 +16,27 @@ let
   };
   inherit (evaluated) pkgs;
   system = evaluated.config.system.build.toplevel;
-  registration = pkgs.closureInfo { rootPaths = [ system ]; };
   name = "nixos-${role}";
-  image = pkgs.dockerTools.buildLayeredImage {
+  image = pkgs.dockerTools.buildLayeredImageWithNixDb {
     inherit name;
     tag = "local";
+    contents = [
+      (pkgs.linkFarm "nixos-root" {
+        "sbin/init" = "/nix/var/nix/profiles/system/init";
+        "bin/sh" = evaluated.config.environment.binsh;
+        "bin/bash" = "${pkgs.bashInteractive}/bin/bash";
+        "usr/bin/bash" = "${pkgs.bashInteractive}/bin/bash";
+        "nix/var/nix/profiles/system" = system;
+      })
+      pkgs.dockerTools.fakeNss
+    ];
     extraCommands = ''
-      mkdir -p sbin bin usr/bin etc/machine tmp run var home root
-      ln -s /nix/var/nix/profiles/system/init sbin/init
-      ln -s ${evaluated.config.environment.binsh} bin/sh
-      ln -s ${pkgs.bashInteractive}/bin/bash bin/bash
-      ln -s ${pkgs.bashInteractive}/bin/bash usr/bin/bash
+      mkdir -p etc/machine tmp run var home root
       touch etc/resolv.conf
       printf '127.0.0.1 localhost\n' > etc/hosts
-      printf 'root:x:0:0:root:/root:${pkgs.bashInteractive}/bin/bash\n' > etc/passwd
-      printf 'root:x:0:\n' > etc/group
       printf '#!/bin/sh\nexit 0\n' > etc/machine/create-user.sh
       chmod +x etc/machine/create-user.sh
       chmod 1777 tmp
-      export NIX_REMOTE="local?root=$PWD" USER=root
-      ${pkgs.nix}/bin/nix-store --load-db < ${registration}/registration
-      mkdir -p nix/var/nix/profiles
-      ln -s ${system} nix/var/nix/profiles/system-1-link
-      ln -s system-1-link nix/var/nix/profiles/system
     '';
     config = {
       Cmd = [ "${pkgs.bashInteractive}/bin/bash" ];
