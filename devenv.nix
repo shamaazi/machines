@@ -1,6 +1,9 @@
 { inputs, ... }:
 let
-  buildImage = import ./lib { inherit (inputs) nixpkgs; };
+  buildImage = import ./lib {
+    # Evaluate the hosts with Linux packages even when devenv runs on macOS.
+    pkgs = inputs.nixpkgs.legacyPackages.aarch64-linux;
+  };
 in
 {
   # Keep both builds available in devenv; onboarding selects only the dev image.
