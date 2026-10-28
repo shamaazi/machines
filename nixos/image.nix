@@ -1,29 +1,19 @@
 {
-  nixpkgs,
-  role ? "dev",
+  config,
+  pkgs,
+  modulesPath,
+  ...
 }:
 let
-  evaluated = import "${nixpkgs}/nixos/lib/eval-config.nix" {
-    system = "aarch64-linux";
-    modules =
-      if role == "dev" then
-        [
-          ./apple.nix
-          ./dev.nix
-        ]
-      else
-        [ ./apple-target.nix ];
-  };
-  inherit (evaluated) pkgs;
-  system = evaluated.config.system.build.toplevel;
-  name = "nixos-${role}";
+  system = config.system.build.toplevel;
+  name = config.image.baseName;
   image = pkgs.dockerTools.buildLayeredImageWithNixDb {
     inherit name;
     tag = "local";
     contents = [
       (pkgs.linkFarm "nixos-root" {
         "sbin/init" = "/nix/var/nix/profiles/system/init";
-        "bin/sh" = evaluated.config.environment.binsh;
+        "bin/sh" = config.environment.binsh;
         "bin/bash" = "${pkgs.bashInteractive}/bin/bash";
         "usr/bin/bash" = "${pkgs.bashInteractive}/bin/bash";
         "nix/var/nix/profiles/system" = system;
@@ -44,10 +34,16 @@ let
     };
   };
 in
-assert builtins.elem role [
-  "dev"
-  "target"
-];
-pkgs.runCommand "${name}.oci.tar" { nativeBuildInputs = [ pkgs.skopeo ]; } ''
-  skopeo --tmpdir "$TMPDIR" --insecure-policy copy docker-archive:${image} oci-archive:$out:${name}:local
-''
+{
+  imports = [
+    "${modulesPath}/image/file-options.nix"
+    ./apple.nix
+  ];
+  image.extension = "oci.tar";
+  system.build.image =
+    pkgs.runCommand config.image.fileName { nativeBuildInputs = [ pkgs.skopeo ]; }
+      ''
+        mkdir -p "$out"
+        skopeo --tmpdir "$TMPDIR" --insecure-policy copy docker-archive:${image} oci-archive:$out/${config.image.fileName}:${name}:local
+      '';
+}

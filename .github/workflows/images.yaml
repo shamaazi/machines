@@ -34,7 +34,7 @@ jobs:
           nix run "github:NixOS/nixpkgs/$revision#devenv" -- build outputs.dev outputs.target > artifacts/builds.json
           for role in dev target; do
             image=$(jq -r --arg output "outputs.$role" '.[$output]' artifacts/builds.json)
-            gzip -n -c "$image" > "artifacts/nixos-$role-aarch64.oci.tar.gz"
+            gzip -n -c "$image/nixos-$role.oci.tar" > "artifacts/nixos-$role-aarch64.oci.tar.gz"
           done
       - name: Write download pins and publish
         env:

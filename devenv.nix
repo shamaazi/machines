@@ -2,10 +2,24 @@
 let
   image =
     role:
-    import ./nixos/image.nix {
-      inherit role;
-      inherit (inputs) nixpkgs;
-    };
+    let
+      system = import "${inputs.nixpkgs}/nixos/lib/eval-config.nix" {
+        system = "aarch64-linux";
+        modules = [
+          (./nixos + "/${role}.nix")
+          {
+            image.modules.apple = {
+              imports = [
+                ./nixos/image.nix
+              ]
+              ++ inputs.nixpkgs.lib.optional (role == "target") ./nixos/apple-target.nix;
+              image.baseName = "nixos-${role}";
+            };
+          }
+        ];
+      };
+    in
+    system.config.system.build.images.apple;
 in
 {
   outputs = {
