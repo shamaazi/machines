@@ -1,10 +1,9 @@
 {
+  nixpkgs,
   role ? "dev",
 }:
 let
-  lock = builtins.fromJSON (builtins.readFile ../devenv.lock);
-  source = builtins.getFlake "github:NixOS/nixpkgs/${lock.nodes.nixpkgs.locked.rev}";
-  evaluated = import "${source}/nixos/lib/eval-config.nix" {
+  evaluated = import "${nixpkgs}/nixos/lib/eval-config.nix" {
     system = "aarch64-linux";
     modules =
       if role == "dev" then

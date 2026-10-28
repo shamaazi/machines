@@ -30,8 +30,10 @@ jobs:
       - name: Build generic ARM64 images from the locked sources
         run: |
           mkdir artifacts
+          revision=$(jq -r .nodes.nixpkgs.locked.rev devenv.lock)
+          nix run "github:NixOS/nixpkgs/$revision#devenv" -- build outputs.dev outputs.target > artifacts/builds.json
           for role in dev target; do
-            image=$(nix-build --impure nixos/image.nix --argstr role "$role" --no-out-link)
+            image=$(jq -r --arg output "outputs.$role" '.[$output]' artifacts/builds.json)
             gzip -n -c "$image" > "artifacts/nixos-$role-aarch64.oci.tar.gz"
           done
       - name: Write download pins and publish
