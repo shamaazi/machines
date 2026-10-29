@@ -7,27 +7,16 @@ if [ "$(uname -s)" != Darwin ] || [ "$(uname -m)" != arm64 ]; then
 fi
 
 if ! command -v limactl >/dev/null 2>&1; then
-  if [ ! -x "$HOME/.local/bin/limactl" ]; then
-    mkdir -p "$HOME/.local"
-    archive=$(mktemp -t machines-lima)
-    trap 'unlink "$archive"' EXIT
-    curl --fail --location --retry 3 --output "$archive" \
-      https://github.com/lima-vm/lima/releases/download/v2.2.1/lima-2.2.1-Darwin-arm64.tar.gz
-    printf '%s  %s\n' 9e9eacce88f37e185c346bad73aa6136f738d8cdf8c3bb23cd42b071824bc66e \
-      "$archive" | shasum -a 256 --check
-    tar -xzf "$archive" -C "$HOME/.local"
-    unlink "$archive"
-    trap - EXIT
-  fi
-
-  # Keep these variables literal so each future login expands its own PATH.
-  # shellcheck disable=SC2016
-  path_line='export PATH="$HOME/.local/bin:$PATH"'
-  touch "$HOME/.zprofile"
-  if ! grep -Fxq "$path_line" "$HOME/.zprofile"; then
-    printf '\n%s\n' "$path_line" >> "$HOME/.zprofile"
-  fi
-  export PATH="$HOME/.local/bin:$PATH"
+  archive=$(mktemp -t machines-lima)
+  trap 'unlink "$archive"' EXIT
+  curl --fail --location --retry 3 --output "$archive" \
+    https://github.com/lima-vm/lima/releases/download/v2.2.1/lima-2.2.1-Darwin-arm64.tar.gz
+  printf '%s  %s\n' 9e9eacce88f37e185c346bad73aa6136f738d8cdf8c3bb23cd42b071824bc66e \
+    "$archive" | shasum -a 256 --check
+  sudo mkdir -p /usr/local
+  sudo tar -xzf "$archive" -C /usr/local
+  unlink "$archive"
+  trap - EXIT
 fi
 
 if [ ! -f "$HOME/.lima/dev/lima.yaml" ]; then
@@ -70,7 +59,6 @@ fi
 chmod 600 "$HOME/.ssh/config"
 limactl autostart enable dev </dev/null
 printf 'Editors and Codex: SSH host lima-dev\n'
-printf 'Open a new Mac terminal to use limactl directly.\n'
 
 # Lima's detached SSH master needs the real terminal device, not /dev/tty.
 terminal=$(tty <&2)
