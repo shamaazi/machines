@@ -40,6 +40,36 @@ if ! grep -Fxq "$ssh_include" "$HOME/.ssh/config"; then
 fi
 chmod 600 "$HOME/.ssh/config"
 limactl autostart enable dev </dev/null
+# Terminal caches profiles while running; reopen it after setup to load these.
+osascript -l JavaScript <<'JXA'
+ObjC.import('Foundation');
+const defaults = $.NSUserDefaults.alloc.initWithSuiteName('com.apple.Terminal');
+const savedProfiles = defaults.dictionaryForKey('Window Settings');
+const profiles = savedProfiles.isNil() ? $.NSMutableDictionary.alloc.init : savedProfiles.mutableCopy;
+const currentName = defaults.stringForKey('Default Window Settings');
+const appearance = currentName.isNil() ? $.NSDictionary.alloc.init : profiles.objectForKey(currentName);
+
+for (const [name, command] of [
+  ['Dev VM', 'limactl start --yes dev && limactl shell dev'],
+  ['Mac', ''],
+]) {
+  const existing = profiles.objectForKey(name);
+  const template = existing.isNil() ? appearance : existing;
+  const profile = template.isNil() ? $.NSMutableDictionary.alloc.init : template.mutableCopy;
+  profile.setObjectForKey($(name), 'name');
+  profile.setObjectForKey($('Window Settings'), 'type');
+  profile.setObjectForKey($(command), 'CommandString');
+  profile.setObjectForKey($(false), 'RunCommandAsShell');
+  profiles.setObjectForKey(profile, name);
+}
+
+defaults.setObjectForKey(profiles, 'Window Settings');
+defaults.setObjectForKey($('Dev VM'), 'Default Window Settings');
+defaults.setObjectForKey($('Dev VM'), 'Startup Window Settings');
+if (!defaults.synchronize) throw new Error('Could not save Terminal profiles');
+JXA
+printf 'Terminal profiles: Dev VM (default) and Mac. Reopen Terminal to load them.\n'
+
 printf 'Editors and Codex: SSH host lima-dev\n'
 
 # Lima's detached SSH master needs the real terminal device, not /dev/tty.
