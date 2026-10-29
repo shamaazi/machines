@@ -49,6 +49,7 @@ if ! defaults export com.apple.Terminal - 2>/dev/null | \
   plutil -extract "Window Settings.$appearance" xml1 -o "$profile" - 2>/dev/null; then
   printf '%s\n' '{ type = "Window Settings"; }' > "$profile"
 fi
+plutil -convert xml1 "$profile"
 for name in Mac 'Dev VM'; do
   command=''
   if [ "$name" = 'Dev VM' ]; then
