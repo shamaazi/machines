@@ -50,7 +50,7 @@ GUEST
   "$cli" shell "$name" -- test -e /etc/machines-configured </dev/null
 fi
 
-mkdir -p "$HOME/.ssh"
+install -d -m 700 "$HOME/.ssh"
 touch "$HOME/.ssh/config"
 ssh_include="Include \"$LIMA_HOME/$name/ssh.config\""
 if ! grep -Fxq "$ssh_include" "$HOME/.ssh/config"; then
@@ -59,5 +59,6 @@ fi
 chmod 600 "$HOME/.ssh/config"
 printf 'Editors and Codex: SSH host lima-%s\n' "$name"
 
-# curl | bash supplies the script on stdin; the interactive shell needs the TTY.
-exec "$cli" shell "$name" </dev/tty
+# Lima's detached SSH master needs the real terminal device, not /dev/tty.
+terminal=$(tty <&2)
+exec "$cli" shell "$name" < "$terminal"
