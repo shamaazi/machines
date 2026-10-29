@@ -6,10 +6,9 @@ if [ "$(uname -s)" != Darwin ] || [ "$(uname -m)" != arm64 ]; then
   exit 1
 fi
 
-store="${MACHINES_HOME:-$HOME/.local/share/machines}"
 name="${MACHINES_NAME:-dev}"
-export LIMA_HOME="$store/lima"
-cli="$store/runtime/bin/limactl"
+export LIMA_HOME="${LIMA_HOME:-$HOME/.lima}"
+cli="$HOME/.local/bin/limactl"
 
 if ! [[ "$name" =~ ^[a-zA-Z0-9_-]+$ ]]; then
   echo 'Invalid machine name.' >&2
@@ -17,13 +16,42 @@ if ! [[ "$name" =~ ^[a-zA-Z0-9_-]+$ ]]; then
 fi
 
 if [ ! -x "$cli" ]; then
-  mkdir -p "$store/runtime"
-  curl --fail --location --retry 3 --output "$store/lima.tar.gz" \
+  mkdir -p "$HOME/.local"
+  archive=$(mktemp -t machines-lima)
+  trap 'unlink "$archive"' EXIT
+  curl --fail --location --retry 3 --output "$archive" \
     https://github.com/lima-vm/lima/releases/download/v2.2.1/lima-2.2.1-Darwin-arm64.tar.gz
   printf '%s  %s\n' 9e9eacce88f37e185c346bad73aa6136f738d8cdf8c3bb23cd42b071824bc66e \
-    "$store/lima.tar.gz" | shasum -a 256 --check
-  tar -xzf "$store/lima.tar.gz" -C "$store/runtime"
-  unlink "$store/lima.tar.gz"
+    "$archive" | shasum -a 256 --check
+  tar -xzf "$archive" -C "$HOME/.local"
+  unlink "$archive"
+  trap - EXIT
+fi
+
+case "${SHELL:-/bin/zsh}" in
+  */bash)
+    profile="$HOME/.profile"
+    if [ -f "$HOME/.bash_login" ]; then
+      profile="$HOME/.bash_login"
+    fi
+    if [ -f "$HOME/.bash_profile" ]; then
+      profile="$HOME/.bash_profile"
+    fi
+    ;;
+  *) profile="$HOME/.zprofile" ;;
+esac
+# Keep these variables literal so each future login expands its own PATH.
+# shellcheck disable=SC2016
+path_line='export PATH="$HOME/.local/bin:$PATH"'
+touch "$profile"
+if ! grep -Fxq "$path_line" "$profile"; then
+  printf '\n%s\n' "$path_line" >> "$profile"
+fi
+export PATH="$HOME/.local/bin:$PATH"
+
+# Preserve VMs created by the earlier private-state bootstrap.
+if [ ! -e "$LIMA_HOME" ] && [ -d "$HOME/.local/share/machines/lima" ]; then
+  ln -s "$HOME/.local/share/machines/lima" "$LIMA_HOME"
 fi
 
 if [ ! -f "$LIMA_HOME/$name/lima.yaml" ]; then
@@ -64,7 +92,9 @@ if ! grep -Fxq "$ssh_include" "$HOME/.ssh/config"; then
   printf '\n%s\n' "$ssh_include" >> "$HOME/.ssh/config"
 fi
 chmod 600 "$HOME/.ssh/config"
+"$cli" autostart enable "$name" </dev/null
 printf 'Editors and Codex: SSH host lima-%s\n' "$name"
+printf 'Open a new Mac terminal to use limactl directly.\n'
 
 # Lima's detached SSH master needs the real terminal device, not /dev/tty.
 terminal=$(tty <&2)
