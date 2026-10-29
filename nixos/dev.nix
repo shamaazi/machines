@@ -1,7 +1,7 @@
 { pkgs, ... }:
 {
   imports = [ ./base.nix ];
-  networking.hostName = "dev";
+  networking.hostName = "shamaazi";
   # Keep image builds and remote rebuilds on the upstream Lima GRUB bootloader.
   boot.loader.systemd-boot.enable = false;
   nix.settings = {
