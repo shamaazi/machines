@@ -6,14 +6,6 @@ if [ "$(uname -s)" != Darwin ] || [ "$(uname -m)" != arm64 ]; then
   exit 1
 fi
 
-name="${MACHINES_NAME:-dev}"
-export LIMA_HOME="${LIMA_HOME:-$HOME/.lima}"
-
-if ! [[ "$name" =~ ^[a-zA-Z0-9_-]+$ ]]; then
-  echo 'Invalid machine name.' >&2
-  exit 2
-fi
-
 if ! command -v limactl >/dev/null 2>&1; then
   if [ ! -x "$HOME/.local/bin/limactl" ]; then
     mkdir -p "$HOME/.local"
@@ -38,7 +30,7 @@ if ! command -v limactl >/dev/null 2>&1; then
   export PATH="$HOME/.local/bin:$PATH"
 fi
 
-if [ ! -f "$LIMA_HOME/$name/lima.yaml" ]; then
+if [ ! -f "$HOME/.lima/dev/lima.yaml" ]; then
   cpus=$(sysctl -n hw.ncpu)
   memory_bytes=$(sysctl -n hw.memsize)
   memory_gib=$((memory_bytes / 1024 / 1024 / 1024 - 8))
@@ -46,13 +38,13 @@ if [ ! -f "$LIMA_HOME/$name/lima.yaml" ]; then
     echo 'Machines needs more than 8 GiB RAM to leave 8 GiB for macOS.' >&2
     exit 1
   fi
-  limactl create --yes --name "$name" --cpus "$cpus" --memory "$memory_gib" \
+  limactl create --yes --name dev --cpus "$cpus" --memory "$memory_gib" \
     https://raw.githubusercontent.com/shamaazi/machines/main/lima.yaml </dev/null
 fi
-limactl start --yes "$name" </dev/null
+limactl start --yes dev </dev/null
 
-if ! limactl shell "$name" -- test -e /etc/machines-configured </dev/null; then
-  limactl shell "$name" -- bash -s <<'GUEST'
+if ! limactl shell dev -- test -e /etc/machines-configured </dev/null; then
+  limactl shell dev -- bash -s <<'GUEST'
 set -euo pipefail
 configuration="$HOME/.local/share/machines"
 if [ ! -d "$configuration/.git" ]; then
@@ -65,21 +57,21 @@ revision=$(nix eval --raw --impure --expr \
   '(builtins.fromJSON (builtins.readFile ./devenv.lock)).nodes.nixpkgs.locked.rev')
 nix run "github:NixOS/nixpkgs/$revision#devenv" -- tasks run machine:configure
 GUEST
-  limactl restart --yes "$name" </dev/null
-  limactl shell "$name" -- test -e /etc/machines-configured </dev/null
+  limactl restart --yes dev </dev/null
+  limactl shell dev -- test -e /etc/machines-configured </dev/null
 fi
 
 install -d -m 700 "$HOME/.ssh"
 touch "$HOME/.ssh/config"
-ssh_include="Include \"$LIMA_HOME/$name/ssh.config\""
+ssh_include="Include \"$HOME/.lima/dev/ssh.config\""
 if ! grep -Fxq "$ssh_include" "$HOME/.ssh/config"; then
   printf '\n%s\n' "$ssh_include" >> "$HOME/.ssh/config"
 fi
 chmod 600 "$HOME/.ssh/config"
-limactl autostart enable "$name" </dev/null
-printf 'Editors and Codex: SSH host lima-%s\n' "$name"
+limactl autostart enable dev </dev/null
+printf 'Editors and Codex: SSH host lima-dev\n'
 printf 'Open a new Mac terminal to use limactl directly.\n'
 
 # Lima's detached SSH master needs the real terminal device, not /dev/tty.
 terminal=$(tty <&2)
-exec limactl shell "$name" < "$terminal"
+exec limactl shell dev < "$terminal"
