@@ -40,6 +40,8 @@ if ! grep -Fxq "$ssh_include" "$HOME/.ssh/config"; then
 fi
 chmod 600 "$HOME/.ssh/config"
 limactl autostart enable dev </dev/null
+# Lima's shared SSH connection adds typing latency on macOS; use a dedicated local session.
+vm_ssh='ssh -o ControlPath=none -o ControlPersist=no -o ObscureKeystrokeTiming=no'
 # Terminal caches profiles while running; reopen it after setup to load these.
 profile=$(mktemp -t machines-terminal)
 trap 'unlink "$profile"' EXIT
@@ -53,7 +55,7 @@ plutil -convert xml1 "$profile"
 for name in Mac 'Dev VM'; do
   command=''
   if [ "$name" = 'Dev VM' ]; then
-    command='limactl shell --start dev'
+    command="SSH='$vm_ssh' limactl shell --start dev"
   fi
   plutil -replace name -string "$name" "$profile"
   plutil -replace CommandString -string "$command" "$profile"
@@ -70,4 +72,4 @@ printf 'Editors and Codex: SSH host lima-dev\n'
 
 # Lima's detached SSH master needs the real terminal device, not /dev/tty.
 terminal=$(tty <&2)
-exec limactl shell dev < "$terminal"
+SSH="$vm_ssh" exec limactl shell dev < "$terminal"
