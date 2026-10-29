@@ -8,16 +8,14 @@ fi
 
 name="${MACHINES_NAME:-dev}"
 export LIMA_HOME="${LIMA_HOME:-$HOME/.lima}"
-cli=$(command -v limactl || true)
 
 if ! [[ "$name" =~ ^[a-zA-Z0-9_-]+$ ]]; then
   echo 'Invalid machine name.' >&2
   exit 2
 fi
 
-if [ -z "$cli" ]; then
-  cli="$HOME/.local/bin/limactl"
-  if [ ! -x "$cli" ]; then
+if ! command -v limactl >/dev/null 2>&1; then
+  if [ ! -x "$HOME/.local/bin/limactl" ]; then
     mkdir -p "$HOME/.local"
     archive=$(mktemp -t machines-lima)
     trap 'unlink "$archive"' EXIT
@@ -30,24 +28,12 @@ if [ -z "$cli" ]; then
     trap - EXIT
   fi
 
-  case "${SHELL:-/bin/zsh}" in
-    */bash)
-      profile="$HOME/.profile"
-      if [ -f "$HOME/.bash_login" ]; then
-        profile="$HOME/.bash_login"
-      fi
-      if [ -f "$HOME/.bash_profile" ]; then
-        profile="$HOME/.bash_profile"
-      fi
-      ;;
-    *) profile="$HOME/.zprofile" ;;
-  esac
   # Keep these variables literal so each future login expands its own PATH.
   # shellcheck disable=SC2016
   path_line='export PATH="$HOME/.local/bin:$PATH"'
-  touch "$profile"
-  if ! grep -Fxq "$path_line" "$profile"; then
-    printf '\n%s\n' "$path_line" >> "$profile"
+  touch "$HOME/.zprofile"
+  if ! grep -Fxq "$path_line" "$HOME/.zprofile"; then
+    printf '\n%s\n' "$path_line" >> "$HOME/.zprofile"
   fi
   export PATH="$HOME/.local/bin:$PATH"
 fi
@@ -60,13 +46,13 @@ if [ ! -f "$LIMA_HOME/$name/lima.yaml" ]; then
     echo 'Machines needs more than 8 GiB RAM to leave 8 GiB for macOS.' >&2
     exit 1
   fi
-  "$cli" create --yes --name "$name" --cpus "$cpus" --memory "$memory_gib" \
+  limactl create --yes --name "$name" --cpus "$cpus" --memory "$memory_gib" \
     https://raw.githubusercontent.com/shamaazi/machines/main/lima.yaml </dev/null
 fi
-"$cli" start --yes "$name" </dev/null
+limactl start --yes "$name" </dev/null
 
-if ! "$cli" shell "$name" -- test -e /etc/machines-configured </dev/null; then
-  "$cli" shell "$name" -- bash -s <<'GUEST'
+if ! limactl shell "$name" -- test -e /etc/machines-configured </dev/null; then
+  limactl shell "$name" -- bash -s <<'GUEST'
 set -euo pipefail
 configuration="$HOME/.local/share/machines"
 if [ ! -d "$configuration/.git" ]; then
@@ -79,8 +65,8 @@ revision=$(nix eval --raw --impure --expr \
   '(builtins.fromJSON (builtins.readFile ./devenv.lock)).nodes.nixpkgs.locked.rev')
 nix run "github:NixOS/nixpkgs/$revision#devenv" -- tasks run machine:configure
 GUEST
-  "$cli" restart --yes "$name" </dev/null
-  "$cli" shell "$name" -- test -e /etc/machines-configured </dev/null
+  limactl restart --yes "$name" </dev/null
+  limactl shell "$name" -- test -e /etc/machines-configured </dev/null
 fi
 
 install -d -m 700 "$HOME/.ssh"
@@ -90,10 +76,10 @@ if ! grep -Fxq "$ssh_include" "$HOME/.ssh/config"; then
   printf '\n%s\n' "$ssh_include" >> "$HOME/.ssh/config"
 fi
 chmod 600 "$HOME/.ssh/config"
-"$cli" autostart enable "$name" </dev/null
+limactl autostart enable "$name" </dev/null
 printf 'Editors and Codex: SSH host lima-%s\n' "$name"
 printf 'Open a new Mac terminal to use limactl directly.\n'
 
 # Lima's detached SSH master needs the real terminal device, not /dev/tty.
 terminal=$(tty <&2)
-exec "$cli" shell "$name" < "$terminal"
+exec limactl shell "$name" < "$terminal"
