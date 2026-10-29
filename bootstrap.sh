@@ -8,50 +8,48 @@ fi
 
 name="${MACHINES_NAME:-dev}"
 export LIMA_HOME="${LIMA_HOME:-$HOME/.lima}"
-cli="$HOME/.local/bin/limactl"
+cli=$(command -v limactl || true)
 
 if ! [[ "$name" =~ ^[a-zA-Z0-9_-]+$ ]]; then
   echo 'Invalid machine name.' >&2
   exit 2
 fi
 
-if [ ! -x "$cli" ]; then
-  mkdir -p "$HOME/.local"
-  archive=$(mktemp -t machines-lima)
-  trap 'unlink "$archive"' EXIT
-  curl --fail --location --retry 3 --output "$archive" \
-    https://github.com/lima-vm/lima/releases/download/v2.2.1/lima-2.2.1-Darwin-arm64.tar.gz
-  printf '%s  %s\n' 9e9eacce88f37e185c346bad73aa6136f738d8cdf8c3bb23cd42b071824bc66e \
-    "$archive" | shasum -a 256 --check
-  tar -xzf "$archive" -C "$HOME/.local"
-  unlink "$archive"
-  trap - EXIT
-fi
+if [ -z "$cli" ]; then
+  cli="$HOME/.local/bin/limactl"
+  if [ ! -x "$cli" ]; then
+    mkdir -p "$HOME/.local"
+    archive=$(mktemp -t machines-lima)
+    trap 'unlink "$archive"' EXIT
+    curl --fail --location --retry 3 --output "$archive" \
+      https://github.com/lima-vm/lima/releases/download/v2.2.1/lima-2.2.1-Darwin-arm64.tar.gz
+    printf '%s  %s\n' 9e9eacce88f37e185c346bad73aa6136f738d8cdf8c3bb23cd42b071824bc66e \
+      "$archive" | shasum -a 256 --check
+    tar -xzf "$archive" -C "$HOME/.local"
+    unlink "$archive"
+    trap - EXIT
+  fi
 
-case "${SHELL:-/bin/zsh}" in
-  */bash)
-    profile="$HOME/.profile"
-    if [ -f "$HOME/.bash_login" ]; then
-      profile="$HOME/.bash_login"
-    fi
-    if [ -f "$HOME/.bash_profile" ]; then
-      profile="$HOME/.bash_profile"
-    fi
-    ;;
-  *) profile="$HOME/.zprofile" ;;
-esac
-# Keep these variables literal so each future login expands its own PATH.
-# shellcheck disable=SC2016
-path_line='export PATH="$HOME/.local/bin:$PATH"'
-touch "$profile"
-if ! grep -Fxq "$path_line" "$profile"; then
-  printf '\n%s\n' "$path_line" >> "$profile"
-fi
-export PATH="$HOME/.local/bin:$PATH"
-
-# Preserve VMs created by the earlier private-state bootstrap.
-if [ ! -e "$LIMA_HOME" ] && [ -d "$HOME/.local/share/machines/lima" ]; then
-  ln -s "$HOME/.local/share/machines/lima" "$LIMA_HOME"
+  case "${SHELL:-/bin/zsh}" in
+    */bash)
+      profile="$HOME/.profile"
+      if [ -f "$HOME/.bash_login" ]; then
+        profile="$HOME/.bash_login"
+      fi
+      if [ -f "$HOME/.bash_profile" ]; then
+        profile="$HOME/.bash_profile"
+      fi
+      ;;
+    *) profile="$HOME/.zprofile" ;;
+  esac
+  # Keep these variables literal so each future login expands its own PATH.
+  # shellcheck disable=SC2016
+  path_line='export PATH="$HOME/.local/bin:$PATH"'
+  touch "$profile"
+  if ! grep -Fxq "$path_line" "$profile"; then
+    printf '\n%s\n' "$path_line" >> "$profile"
+  fi
+  export PATH="$HOME/.local/bin:$PATH"
 fi
 
 if [ ! -f "$LIMA_HOME/$name/lima.yaml" ]; then
