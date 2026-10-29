@@ -1,6 +1,6 @@
 # Machines
 
-A persistent NixOS development VM for Apple Silicon Macs, with git, gh and devenv.
+A persistent NixOS development VM for Apple Silicon Macs, with git, gh, devenv and Codex.
 
 Initial setup:
 

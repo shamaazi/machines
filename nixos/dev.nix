@@ -15,6 +15,7 @@
     openssh
     ripgrep
     bubblewrap
+    (import ../packages/codex.nix { inherit pkgs; })
   ];
   services.openssh = {
     settings.PermitRootLogin = "no";
