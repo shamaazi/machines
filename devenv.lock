@@ -54,23 +54,6 @@
         "type": "github"
       }
     },
-    "lima": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1791705777,
-        "narHash": "sha256-XJjjleAv5EXffTbbLL9D4KtvTjP7G2fe30G98kbIRK8=",
-        "owner": "nixos-lima",
-        "repo": "nixos-lima",
-        "rev": "e0e086f24b6b8b3d062ca3a1dce1655eb681c237",
-        "type": "github"
-      },
-      "original": {
-        "owner": "nixos-lima",
-        "repo": "nixos-lima",
-        "rev": "e0e086f24b6b8b3d062ca3a1dce1655eb681c237",
-        "type": "github"
-      }
-    },
     "nixpkgs": {
       "locked": {
         "lastModified": 1790652569,
@@ -91,7 +74,6 @@
       "inputs": {
         "devenv": "devenv",
         "git-hooks": "git-hooks",
-        "lima": "lima",
         "nixpkgs": "nixpkgs"
       }
     }

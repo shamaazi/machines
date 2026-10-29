@@ -1,0 +1,45 @@
+{
+  "nodes": {
+    "lima": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1791705777,
+        "narHash": "sha256-XJjjleAv5EXffTbbLL9D4KtvTjP7G2fe30G98kbIRK8=",
+        "owner": "nixos-lima",
+        "repo": "nixos-lima",
+        "rev": "e0e086f24b6b8b3d062ca3a1dce1655eb681c237",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nixos-lima",
+        "repo": "nixos-lima",
+        "rev": "e0e086f24b6b8b3d062ca3a1dce1655eb681c237",
+        "type": "github"
+      }
+    },
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1790652569,
+        "narHash": "sha256-641r7xrlSOHYoktL9/aArPIYNgZJ9eM5URzSEOtPJDY=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "b6c8664de9b6cc07fe5666a29f91884ba81197c4",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "b6c8664de9b6cc07fe5666a29f91884ba81197c4",
+        "type": "github"
+      }
+    },
+    "root": {
+      "inputs": {
+        "lima": "lima",
+        "nixpkgs": "nixpkgs"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}

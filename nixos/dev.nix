@@ -2,7 +2,8 @@
 {
   imports = [ ./base.nix ];
   networking.hostName = "dev";
-  environment.etc."machines-configured".text = "Configured by shamaazi/machines.\n";
+  # Keep image builds and remote rebuilds on the upstream Lima GRUB bootloader.
+  boot.loader.systemd-boot.enable = false;
   nix.settings = {
     max-jobs = 4;
     cores = 2;

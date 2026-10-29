@@ -1,8 +1,5 @@
 require_version: '>=2.4'
 inputs:
-  lima:
-    url: github:nixos-lima/nixos-lima/e0e086f24b6b8b3d062ca3a1dce1655eb681c237
-    flake: false
   nixpkgs:
     url: github:NixOS/nixpkgs/nixpkgs-unstable
   git-hooks:

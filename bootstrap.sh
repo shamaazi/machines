@@ -32,24 +32,6 @@ if [ ! -f "$HOME/.lima/dev/lima.yaml" ]; then
 fi
 limactl start --yes dev </dev/null
 
-if ! limactl shell dev -- test -e /etc/machines-configured </dev/null; then
-  limactl shell dev -- bash -s <<'GUEST'
-set -euo pipefail
-configuration="$HOME/.local/share/machines"
-if [ ! -d "$configuration/.git" ]; then
-  git clone --depth 1 https://github.com/shamaazi/machines.git "$configuration"
-else
-  git -C "$configuration" pull --ff-only
-fi
-cd "$configuration"
-revision=$(nix eval --raw --impure --expr \
-  '(builtins.fromJSON (builtins.readFile ./devenv.lock)).nodes.nixpkgs.locked.rev')
-nix run "github:NixOS/nixpkgs/$revision#devenv" -- tasks run machine:configure
-GUEST
-  limactl restart --yes dev </dev/null
-  limactl shell dev -- test -e /etc/machines-configured </dev/null
-fi
-
 install -d -m 700 "$HOME/.ssh"
 touch "$HOME/.ssh/config"
 ssh_include="Include \"$HOME/.lima/dev/ssh.config\""
