@@ -27,7 +27,14 @@ if [ ! -x "$cli" ]; then
 fi
 
 if [ ! -f "$LIMA_HOME/$name/lima.yaml" ]; then
-  "$cli" create --yes --name "$name" \
+  cpus=$(sysctl -n hw.ncpu)
+  memory_bytes=$(sysctl -n hw.memsize)
+  memory_gib=$((memory_bytes / 1024 / 1024 / 1024 - 8))
+  if [ "$memory_gib" -lt 1 ]; then
+    echo 'Machines needs more than 8 GiB RAM to leave 8 GiB for macOS.' >&2
+    exit 1
+  fi
+  "$cli" create --yes --name "$name" --cpus "$cpus" --memory "$memory_gib" \
     https://raw.githubusercontent.com/shamaazi/machines/main/lima.yaml </dev/null
 fi
 "$cli" start --yes "$name" </dev/null

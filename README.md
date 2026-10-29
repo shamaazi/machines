@@ -10,5 +10,6 @@ Starts a persistent NixOS VM using Lima's upstream community image, applies our
 Nix configuration inside it, and opens a shell. Includes git, gh and devenv.
 No Mac checkout, host Nix or GitHub login is required. Rerunning reconnects.
 Editors and Codex connect to SSH host `lima-dev`; devenv's `.localhost` URLs work
-through automatic port forwarding. Defaults: 8 CPUs, 10 GiB RAM, 80 GiB disk.
+through automatic port forwarding. New VMs use all CPU cores and the laptop's
+RAM minus 8 GiB reserved for macOS, with an 80 GiB disk.
 State stays in `~/.local/share/machines`. Deployment targets are separate.

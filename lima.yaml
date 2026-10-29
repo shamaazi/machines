@@ -1,7 +1,5 @@
 vmType: vz
 arch: aarch64
-cpus: 8
-memory: 10GiB
 disk: 80GiB
 images:
   - location: https://github.com/nixos-lima/nixos-lima/releases/download/v0.2.2/nixos-lima-v0.2.2-aarch64.qcow2
