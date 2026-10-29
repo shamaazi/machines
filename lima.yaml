@@ -1,0 +1,21 @@
+vmType: vz
+arch: aarch64
+cpus: 8
+memory: 10GiB
+disk: 80GiB
+images:
+  - location: https://github.com/nixos-lima/nixos-lima/releases/download/v0.2.2/nixos-lima-v0.2.2-aarch64.qcow2
+    arch: aarch64
+    digest: sha512:bfcb703cdbad28cfd27438dc009408a859f3c4f575d3598d9627ea712c66128e0fa015de2010ce42bb724abc49f45029a4fc81891fb1a04c567378a6fdf31903
+mounts: []
+containerd:
+  system: false
+  user: false
+ssh:
+  forwardAgent: false
+portForwards:
+  # NixOS exposes its DHCP client socket; do not forward the Mac's DHCP port.
+  - proto: udp
+    guestPort: 68
+    guestIP: 0.0.0.0
+    ignore: true

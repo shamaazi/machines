@@ -1,13 +1,14 @@
 # Machines
 
-Run on an Apple Silicon Mac with macOS 26:
+Run on an Apple Silicon Mac:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/shamaazi/machines/main/bootstrap.sh | bash
 ```
 
-Sets up a persistent dev VM from the latest release and opens its native shell.
-Includes git, gh and devenv; defaults to 8 CPUs and 10 GiB RAM.
-No local checkout, host Nix or GitHub login is required. Rerunning reconnects.
-Machine state stays in `~/.local/share/machines`; deployment targets are separate.
-SSH credentials for editors and Codex are in `~/.local/share/machines/ssh/dev/config`.
+Starts a persistent NixOS VM using Lima's upstream community image, applies our
+Nix configuration inside it, and opens a shell. Includes git, gh and devenv.
+No Mac checkout, host Nix or GitHub login is required. Rerunning reconnects.
+Editors and Codex connect to SSH host `lima-dev`; devenv's `.localhost` URLs work
+through automatic port forwarding. Defaults: 8 CPUs, 10 GiB RAM, 80 GiB disk.
+State stays in `~/.local/share/machines`. Deployment targets are separate.
