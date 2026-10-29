@@ -54,12 +54,16 @@ fi
 plutil -convert xml1 "$profile"
 for name in Mac 'Dev VM'; do
   command=''
+  close_warning=0
   if [ "$name" = 'Dev VM' ]; then
     command="SSH='$vm_ssh' limactl shell --start dev"
+    # The VM connection is always running, so Terminal would prompt on every close.
+    close_warning=2
   fi
   plutil -replace name -string "$name" "$profile"
   plutil -replace CommandString -string "$command" "$profile"
   plutil -replace RunCommandAsShell -bool false "$profile"
+  plutil -replace warnOnShellCloseAction -integer "$close_warning" "$profile"
   defaults write com.apple.Terminal 'Window Settings' -dict-add "$name" "$(cat "$profile")"
 done
 unlink "$profile"
