@@ -41,16 +41,26 @@ fi
 chmod 600 "$HOME/.ssh/config"
 limactl autostart enable dev </dev/null
 # Terminal caches profiles while running; reopen it after setup to load these.
-defaults write com.apple.Terminal 'Window Settings' -dict-add \
-  'Dev VM' '{
-    name = "Dev VM";
-    type = "Window Settings";
-    CommandString = "limactl shell --start dev";
-  }' \
-  'Mac' '{
-    name = "Mac";
-    type = "Window Settings";
-  }'
+profile=$(mktemp -t machines-terminal)
+trap 'unlink "$profile"' EXIT
+appearance=$(defaults read com.apple.Terminal 'Default Window Settings' 2>/dev/null || true)
+# Copy the current appearance; a minimal profile falls back to a white background.
+if ! defaults export com.apple.Terminal - 2>/dev/null | \
+  plutil -extract "Window Settings.$appearance" xml1 -o "$profile" - 2>/dev/null; then
+  printf '%s\n' '{ type = "Window Settings"; }' > "$profile"
+fi
+for name in Mac 'Dev VM'; do
+  command=''
+  if [ "$name" = 'Dev VM' ]; then
+    command='limactl shell --start dev'
+  fi
+  plutil -replace name -string "$name" "$profile"
+  plutil -replace CommandString -string "$command" "$profile"
+  plutil -replace RunCommandAsShell -bool false "$profile"
+  defaults write com.apple.Terminal 'Window Settings' -dict-add "$name" "$(cat "$profile")"
+done
+unlink "$profile"
+trap - EXIT
 defaults write com.apple.Terminal 'Default Window Settings' -string 'Dev VM'
 defaults write com.apple.Terminal 'Startup Window Settings' -string 'Dev VM'
 printf 'Terminal profiles: Dev VM (default) and Mac. Reopen Terminal to load them.\n'
