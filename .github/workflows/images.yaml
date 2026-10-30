@@ -40,12 +40,6 @@ jobs:
           git tag --force latest "$GITHUB_SHA"
           git push --force origin refs/tags/latest
       - name: Publish the rolling release
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
-        with:
-          tag_name: latest
-          name: Latest
-          body: Current ARM64 NixOS development image.
-          files: artifacts/nixos-dev-aarch64.qcow2.gz
-          fail_on_unmatched_files: true
-          overwrite_files: true
-          make_latest: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload latest artifacts/nixos-dev-aarch64.qcow2.gz --clobber
