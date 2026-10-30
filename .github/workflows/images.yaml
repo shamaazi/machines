@@ -1,0 +1,66 @@
+name: Publish development image
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/images.yaml
+      - flake.lock
+      - flake.nix
+      - nixos/**
+      - packages/**
+  workflow_dispatch:
+
+concurrency:
+  group: development-image-release
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # vmTools declares KVM as required, but QEMU falls back to TCG on hosted ARM runners.
+      - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31.11.3
+        with:
+          extra_nix_config: system-features = benchmark big-parallel kvm nixos-test
+      - name: Build the locked development image
+        run: |
+          mkdir artifacts
+          image=$(nix build .#image --no-link --print-out-paths)
+          qcow2=$(find "$image" -maxdepth 1 -type f -name '*.qcow2' -print -quit)
+          test -n "$qcow2"
+          gzip -n -c "$qcow2" > artifacts/nixos-dev-aarch64.qcow2.gz
+          cd artifacts
+          sha256sum nixos-dev-aarch64.qcow2.gz > SHA256SUMS
+      - name: Move the rolling release tag
+        run: |
+          git tag --force latest "$GITHUB_SHA"
+          git push --force origin refs/tags/latest
+      - name: Publish the rolling release
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
+        with:
+          tag_name: latest
+          name: Latest
+          body: Current ARM64 NixOS development image.
+          files: |
+            artifacts/nixos-dev-aarch64.qcow2.gz
+            artifacts/SHA256SUMS
+          fail_on_unmatched_files: true
+          overwrite_files: true
+          make_latest: true
+      - name: Update the image pin
+        run: |
+          digest=$(cut -d ' ' -f 1 artifacts/SHA256SUMS)
+          sed -i -E "s#(digest: sha256:)[0-9a-f]+#\1$digest#" lima.yaml
+          git diff --quiet -- lima.yaml && exit 0
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add lima.yaml
+          git commit -m 'chore: update development image digest'
+          git push origin HEAD:main

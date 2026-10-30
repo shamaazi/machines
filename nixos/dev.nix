@@ -1,6 +1,9 @@
 { pkgs, ... }:
 {
-  imports = [ ./base.nix ];
+  imports = [
+    ./base.nix
+    ./modules/gclpr.nix
+  ];
   networking.hostName = "shamaazi";
   # Keep image builds and remote rebuilds on the upstream Lima GRUB bootloader.
   boot.loader.systemd-boot.enable = false;
@@ -15,8 +18,9 @@
     openssh
     ripgrep
     bubblewrap
-    (import ../packages/codex.nix { inherit pkgs; })
+    codex
   ];
+  services.gclpr.enable = true;
   services.openssh = {
     settings.PermitRootLogin = "no";
   };
