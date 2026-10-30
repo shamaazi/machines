@@ -35,8 +35,6 @@ jobs:
           qcow2=$(find "$image" -maxdepth 1 -type f -name '*.qcow2' -print -quit)
           test -n "$qcow2"
           gzip -n -c "$qcow2" > artifacts/nixos-dev-aarch64.qcow2.gz
-          cd artifacts
-          sha256sum nixos-dev-aarch64.qcow2.gz > SHA256SUMS
       - name: Move the rolling release tag
         run: |
           git tag --force latest "$GITHUB_SHA"
@@ -47,20 +45,7 @@ jobs:
           tag_name: latest
           name: Latest
           body: Current ARM64 NixOS development image.
-          files: |
-            artifacts/nixos-dev-aarch64.qcow2.gz
-            artifacts/SHA256SUMS
+          files: artifacts/nixos-dev-aarch64.qcow2.gz
           fail_on_unmatched_files: true
           overwrite_files: true
           make_latest: true
-      - name: Update the image pin
-        run: |
-          digest=$(cut -d ' ' -f 1 artifacts/SHA256SUMS)
-          sed -i -E "s#(digest: sha256:)[0-9a-f]+#\1$digest#" lima.yaml
-          git diff --quiet -- lima.yaml && exit 0
-
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add lima.yaml
-          git commit -m 'chore: update development image digest'
-          git push origin HEAD:main

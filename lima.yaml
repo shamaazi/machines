@@ -4,7 +4,6 @@ disk: 80GiB
 images:
   - location: https://github.com/shamaazi/machines/releases/download/latest/nixos-dev-aarch64.qcow2.gz
     arch: aarch64
-    digest: sha256:ffc53582551f4cb95cd70149d96e5b0a4e1c8ea8724dfb50c9addb83744f960e
 mounts: []
 containerd:
   system: false
