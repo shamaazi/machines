@@ -11,8 +11,12 @@ containerd:
 ssh:
   forwardAgent: false
 portForwards:
+  # The guest proxy connects to the Mac bridge; forwarding it back creates a loop.
+  - guestPort: 2850
+    ignore: true
   # NixOS exposes its DHCP client socket; do not forward the Mac's DHCP port.
   - proto: udp
     guestPort: 68
     guestIP: 0.0.0.0
     ignore: true
+
