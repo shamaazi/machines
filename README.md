@@ -19,6 +19,38 @@ limactl shell dev -- sudo nixos-rebuild boot --flake github:shamaazi/machines#de
 The bootstrap links the VM with the Mac browser and clipboard. Any process in
 the VM can read or replace the Mac clipboard.
 
+## VM resources
+
+The bootstrap initially assigns all Mac CPU cores, the Mac's RAM minus 8 GiB,
+and an 80 GiB virtual disk. Existing VMs keep their settings when bootstrap is rerun.
+
+Run resource changes on the Mac. Stop the VM first, which disconnects its SSH
+sessions. For example, to use 8 CPUs and 16 GiB RAM:
+
+```sh
+limactl stop dev
+limactl edit dev --yes --cpus 8 --memory 16
+limactl start dev
+```
+
+Choose values that fit your Mac, leaving memory available for macOS.
+
+To grow the virtual disk to 120 GiB:
+
+```sh
+limactl stop dev
+limactl edit dev --yes --disk 120
+limactl start dev
+limactl shell dev -- df -h /
+```
+
+Memory and disk values are in GiB. Grow disks only; shrinking is not supported.
+The image enables automatic root filesystem resizing at boot; `df` checks the
+usable space afterward. Lima stores the settings in `~/.lima/dev/lima.yaml`
+on the Mac. These changes do not require a NixOS rebuild or VM reinstallation.
+See Lima's [edit command](https://lima-vm.io/docs/reference/limactl_edit/)
+and [disk documentation](https://lima-vm.io/docs/config/disk/).
+
 ## AI agents
 
 The image does not bundle an AI agent. Install your preferred CLI in your user
