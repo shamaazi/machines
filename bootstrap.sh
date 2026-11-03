@@ -207,12 +207,36 @@ configure_github() {
 }
 
 configure_ssh() {
+  local ssh_config="$HOME/.ssh/config"
   local ssh_include="Include \"$HOME/.lima/$VM_NAME/ssh.config\""
-  # Expose Lima's generated host to standard SSH clients such as editors and Codex.
+  # Accept the existing include without modifying a Nix-managed file or its mode.
+  if awk -v absolute="$HOME/.lima/$VM_NAME/ssh.config" \
+      -v relative="~/.lima/$VM_NAME/ssh.config" '
+      tolower($1) == "host" || tolower($1) == "match" { exit }
+      tolower($1) == "include" {
+        if ($0 == "Include \"" absolute "\"") found = 1
+        for (i = 2; i <= NF; i++) {
+          if (substr($i, 1, 1) == "#") break
+          path = $i
+          gsub(/^"|"$/, "", path)
+          if (path == absolute || path == relative) found = 1
+        }
+      }
+      END { exit !found }
+    ' "$ssh_config" 2>/dev/null; then
+    return
+  fi
+
+  if [ -L "$ssh_config" ] || { [ -e "$ssh_config" ] && [ ! -w "$ssh_config" ]; }; then
+    printf 'SSH config is managed or read-only: %s\nAdd this include through its configuration manager, apply it, and rerun bootstrap:\n%s\n' \
+      "$ssh_config" "$ssh_include" >&2
+    exit 1
+  fi
+
+  # Expose Lima's generated host to standard SSH clients and editors.
   install -d -m 700 "$HOME/.ssh"
-  grep -Fxq "$ssh_include" "$HOME/.ssh/config" 2>/dev/null || \
-    printf '\n%s\n' "$ssh_include" >> "$HOME/.ssh/config"
-  chmod 600 "$HOME/.ssh/config"
+  printf '\n%s\n' "$ssh_include" >> "$ssh_config"
+  chmod 600 "$ssh_config"
 }
 
 enable_vm_autostart() {
@@ -248,13 +272,13 @@ configure_terminal_profile() {
 # Main program
 
 check_platform
+configure_ssh
 create_temporary_directory
 install_lima
 create_vm
 start_vm
 configure_host_integration
 configure_github
-configure_ssh
 enable_vm_autostart
 configure_terminal_profile
 

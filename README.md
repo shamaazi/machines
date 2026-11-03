@@ -2,6 +2,22 @@
 
 A persistent NixOS development VM for Apple Silicon Macs, with git, gh and devenv.
 
+If Nix or another tool manages your Mac's `~/.ssh/config`, add the Lima include
+through that tool and apply the configuration before running bootstrap.
+For Home Manager:
+
+```nix
+programs.ssh.includes = [ "~/.lima/dev/ssh.config" ];
+```
+
+The resulting SSH configuration must include `~/.lima/dev/ssh.config` at the
+top level, outside any `Host` or `Match` block. The target file is generated
+when Lima creates the VM; it does not need to exist when you add the include.
+Bootstrap leaves an existing include and its file permissions untouched. If a
+symlinked or read-only config lacks the include, bootstrap stops before downloading
+or creating the VM and prints the required line. For an ordinary writable config,
+bootstrap adds the include automatically.
+
 Initial setup:
 
 ```sh
