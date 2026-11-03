@@ -103,6 +103,7 @@ ensure_vm_gclpr_key() {
 
 trust_vm_gclpr_key() {
   local public_key
+  local trusted_file="$bootstrap_tmp/gclpr-trusted"
   # shellcheck disable=SC2016
   public_key=$(limactl shell "$VM_NAME" -- sh -c \
     'od -An -v -tx1 "$HOME/.gclpr/key.pub"' | tr -d '[:space:]')
@@ -110,7 +111,8 @@ trust_vm_gclpr_key() {
     grep -Eq '^[0-9a-f]{64}$' <<< "$public_key"
 
   # This server is exclusively for the VM, so replace stale trusted keys.
-  install -m 600 /dev/stdin "$HOME/.gclpr/trusted" <<< "$public_key"
+  printf '%s\n' "$public_key" > "$trusted_file"
+  install -m 600 "$trusted_file" "$HOME/.gclpr/trusted"
 }
 
 install_gclpr_launch_agent() {
