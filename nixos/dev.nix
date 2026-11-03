@@ -18,7 +18,6 @@
     openssh
     ripgrep
     bubblewrap
-    codex
   ];
   services.gclpr.enable = true;
   services.openssh = {
