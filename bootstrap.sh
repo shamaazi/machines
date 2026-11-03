@@ -64,9 +64,14 @@ start_vm() {
   limactl start --yes "$VM_NAME" </dev/null
 }
 
+run_in_vm() {
+  # SSH must not consume the remaining script when bootstrap is piped into Bash.
+  limactl shell "$VM_NAME" -- "$@" </dev/null
+}
+
 check_vm_has_gclpr() {
   assert 'The VM must be rebuilt with gclpr before installing the Mac integration.' \
-    limactl shell "$VM_NAME" -- sh -c 'command -v gclpr >/dev/null'
+    run_in_vm sh -c 'command -v gclpr >/dev/null'
 }
 
 install_mac_gclpr() {
@@ -96,17 +101,17 @@ install_mac_gclpr() {
 ensure_vm_gclpr_key() {
   # Expand HOME in the guest, not in this Mac shell.
   # shellcheck disable=SC2016
-  limactl shell "$VM_NAME" -- sh -c \
+  run_in_vm sh -c \
     'test -f "$HOME/.gclpr/key" && test -f "$HOME/.gclpr/key.pub"' && return
 
-  limactl shell "$VM_NAME" -- gclpr genkey >/dev/null
+  run_in_vm gclpr genkey >/dev/null
 }
 
 trust_vm_gclpr_key() {
   local public_key
   local trusted_file="$bootstrap_tmp/gclpr-trusted"
   # shellcheck disable=SC2016
-  public_key=$(limactl shell "$VM_NAME" -- sh -c \
+  public_key=$(run_in_vm sh -c \
     'od -An -v -tx1 "$HOME/.gclpr/key.pub"' | tr -d '[:space:]')
   assert 'Could not read the gclpr public key from the VM.' \
     grep -Eq '^[0-9a-f]{64}$' <<< "$public_key"
@@ -163,16 +168,16 @@ configure_host_integration() {
 }
 
 configure_github() {
-  if ! limactl shell "$VM_NAME" -- gh auth status --hostname github.com >/dev/null 2>&1; then
+  if ! run_in_vm gh auth status --hostname github.com >/dev/null 2>&1; then
     limactl shell "$VM_NAME" -- gh auth login --hostname github.com \
       --git-protocol https --web --scopes user:email </dev/tty
-  elif ! limactl shell "$VM_NAME" -- gh api user/emails --silent >/dev/null 2>&1; then
+  elif ! run_in_vm gh api user/emails --silent >/dev/null 2>&1; then
     limactl shell "$VM_NAME" -- gh auth refresh --hostname github.com \
       --scopes user:email </dev/tty
   fi
 
   local profile github_login github_id github_name git_name git_email
-  profile=$(limactl shell "$VM_NAME" -- gh api user --jq \
+  profile=$(run_in_vm gh api user --jq \
     '[.login, (.id | tostring), (.name // "")] | join("\u001f")')
   IFS=$'\x1f' read -r github_login github_id github_name <<< "$profile"
 
@@ -183,7 +188,7 @@ configure_github() {
       "$git_name" >&2
   fi
 
-  git_email=$(limactl shell "$VM_NAME" -- gh api 'user/emails?per_page=100' --jq \
+  git_email=$(run_in_vm gh api 'user/emails?per_page=100' --jq \
     "[.[] | select(.verified and (.email | ascii_downcase | endswith(\"@${WORK_EMAIL_DOMAIN}\")))] | sort_by(if .primary then 0 else 1 end) | (.[0].email // \"\")")
   if [ -z "$git_email" ]; then
     git_email="${github_id}+${github_login}@users.noreply.github.com"
@@ -191,8 +196,8 @@ configure_github() {
       "$WORK_EMAIL_DOMAIN" "$git_email" >&2
   fi
 
-  limactl shell "$VM_NAME" -- git config --global user.name "$git_name"
-  limactl shell "$VM_NAME" -- git config --global user.email "$git_email"
+  run_in_vm git config --global user.name "$git_name"
+  run_in_vm git config --global user.email "$git_email"
   printf 'Git identity: %s <%s>\n' "$git_name" "$git_email"
 }
 
@@ -250,4 +255,5 @@ configure_terminal_profile
 
 printf 'Setup complete. Reopen Terminal and open a new %s window.\n' "$TERMINAL_PROFILE"
 printf 'Editors and Codex can connect using SSH host lima-dev.\n'
+
 
