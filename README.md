@@ -2,94 +2,64 @@
 
 A persistent NixOS development VM for Apple Silicon Macs, with git, gh and devenv.
 
-If Nix or another tool manages your Mac's `~/.ssh/config`, add the Lima include
-through that tool and apply the configuration before running bootstrap.
-For Home Manager:
+## Setup (Mac)
+
+1. If Nix manages your SSH config, apply the setting below first.
+2. Run:
+
+   ```sh
+   curl -fsSL https://raw.githubusercontent.com/shamaazi/machines/main/bootstrap.sh | bash
+   ```
+
+3. Paste the automatically copied GitHub code into the browser and approve access.
+
+The VM can open your Mac browser and read or replace its clipboard.
+
+## Nix-managed SSH config (optional)
+
+Add and apply this Home Manager setting before setup:
 
 ```nix
 programs.ssh.includes = [ "~/.lima/dev/ssh.config" ];
 ```
 
-The resulting SSH configuration must include `~/.lima/dev/ssh.config` at the
-top level, outside any `Host` or `Match` block. The target file is generated
-when Lima creates the VM; it does not need to exist when you add the include.
-Bootstrap leaves an existing include and its file permissions untouched. If a
-symlinked or read-only config lacks the include, bootstrap stops before downloading
-or creating the VM and prints the required line. For an ordinary writable config,
-bootstrap adds the include automatically.
+The include must be a standalone line before any `Host` or `Match` blocks.
+Bootstrap adds it automatically for writable configs and leaves existing includes untouched.
 
-Initial setup:
+## Connect (Mac)
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/shamaazi/machines/main/bootstrap.sh | bash
+ssh lima-dev
 ```
 
-Sign in to GitHub in the browser when prompted.
-
-Update from the Mac:
+## Update the VM (Mac)
 
 ```sh
 limactl shell dev -- sudo nixos-rebuild boot --flake github:shamaazi/machines#dev && limactl restart dev
 ```
 
-The bootstrap links the VM with the Mac browser and clipboard. Any process in
-the VM can read or replace the Mac clipboard.
+## Change VM resources (Mac)
 
-## VM resources
-
-The bootstrap initially assigns all Mac CPU cores, the Mac's RAM minus 8 GiB,
-and an 80 GiB virtual disk. Existing VMs keep their settings when bootstrap is rerun.
-
-Run resource changes on the Mac. Stop the VM first, which disconnects its SSH
-sessions. For example, to use 8 CPUs and 16 GiB RAM:
+Defaults: all CPU cores, host RAM minus 8 GiB, and an 80 GiB disk.
+Adjust the values below; omit flags you do not need. Disk size can only increase.
 
 ```sh
 limactl stop dev
-limactl edit dev --yes --cpus 8 --memory 16
+limactl edit dev --yes --cpus 8 --memory 16 --disk 120
 limactl start dev
 ```
 
-Choose values that fit your Mac, leaving memory available for macOS.
+Memory and disk sizes are in GiB. Leave enough RAM for macOS.
 
-To grow the virtual disk to 120 GiB:
+## AI agents (inside the VM)
 
-```sh
-limactl stop dev
-limactl edit dev --yes --disk 120
-limactl start dev
-limactl shell dev -- df -h /
-```
-
-Memory and disk values are in GiB. Grow disks only; shrinking is not supported.
-The image enables automatic root filesystem resizing at boot; `df` checks the
-usable space afterward. Lima stores the settings in `~/.lima/dev/lima.yaml`
-on the Mac. These changes do not require a NixOS rebuild or VM reinstallation.
-See Lima's [edit command](https://lima-vm.io/docs/reference/limactl_edit/)
-and [disk documentation](https://lima-vm.io/docs/config/disk/).
-
-## AI agents
-
-The image does not bundle an AI agent. Install your preferred CLI in your user
-Nix profile by running these commands inside the VM. For example, to install Codex:
+Install your preferred agent in your user Nix profile. Codex is an example;
+replace it with another Nixpkgs package name.
 
 ```sh
 nix profile add nixpkgs#codex
-```
-
-Use the corresponding Nixpkgs package name to install another agent.
-
-Update one agent, or all packages in your user profile:
-
-```sh
 nix profile upgrade codex
 nix profile upgrade --all
 ```
 
-These commands do not require sudo or a VM rebuild. Updates use the version
-available in the package source, which may lag the vendor's latest release.
-Keep an updatable package reference such as `nixpkgs#codex` to receive updates;
-a reference pinned to a specific commit stays pinned.
-
-For tools installed this way, use Nix to update them rather than their built-in
-updaters. Desktop apps that deploy their own remote runtimes manage those
-separately; installing a CLI in a Nix profile does not control those runtimes.
+Use Nix to update these packages. Desktop apps manage their own remote runtimes separately.
