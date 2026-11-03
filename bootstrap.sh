@@ -42,8 +42,9 @@ install_lima() {
   printf '%s  %s\n' 9e9eacce88f37e185c346bad73aa6136f738d8cdf8c3bb23cd42b071824bc66e \
     "$archive" | shasum -a 256 --check
   sudo mkdir -p /usr/local
-  # macOS may reject restoring the archive root timestamp on /usr/local.
-  sudo tar -xzmf "$archive" -C /usr/local
+  # Strip the archive's ./ entry so tar never changes /usr/local itself.
+  # Installed files belong to the installing user (root), not the archive creator.
+  sudo tar -xzmf "$archive" --strip-components=1 --no-same-owner -C /usr/local
 }
 
 create_vm() {
@@ -255,5 +256,6 @@ configure_terminal_profile
 
 printf 'Setup complete. Reopen Terminal and open a new %s window.\n' "$TERMINAL_PROFILE"
 printf 'Editors and Codex can connect using SSH host lima-dev.\n'
+
 
 
