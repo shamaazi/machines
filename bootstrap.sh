@@ -170,12 +170,16 @@ configure_host_integration() {
 
 configure_github() {
   if ! run_in_vm gh auth status --hostname github.com >/dev/null 2>&1; then
-    limactl shell "$VM_NAME" -- gh auth login --hostname github.com \
-      --git-protocol https --web --scopes user:email </dev/tty
+    open https://github.com/login/device
+    run_in_vm env GH_PROMPT_DISABLED=1 gh auth login --hostname github.com \
+      --git-protocol https --web --clipboard --scopes user:email
   elif ! run_in_vm gh api user/emails --silent >/dev/null 2>&1; then
-    limactl shell "$VM_NAME" -- gh auth refresh --hostname github.com \
-      --scopes user:email </dev/tty
+    open https://github.com/login/device
+    run_in_vm env GH_PROMPT_DISABLED=1 gh auth refresh --hostname github.com \
+      --clipboard --scopes user:email
   fi
+
+  run_in_vm gh auth setup-git --hostname github.com
 
   local profile github_login github_id github_name git_name git_email
   profile=$(run_in_vm gh api user --jq \
@@ -256,6 +260,7 @@ configure_terminal_profile
 
 printf 'Setup complete. Reopen Terminal and open a new %s window.\n' "$TERMINAL_PROFILE"
 printf 'Editors and Codex can connect using SSH host lima-dev.\n'
+
 
 
 
