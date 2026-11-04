@@ -1,5 +1,4 @@
-{ pkgs, ... }:
-{
+{pkgs, ...}: {
   imports = [
     ./base.nix
     ./modules/gclpr.nix
@@ -12,13 +11,16 @@
     cores = 2;
   };
   environment.systemPackages = with pkgs; [
+    bubblewrap
+    devenv
     git
     gh
-    devenv
     openssh
     ripgrep
-    bubblewrap
   ];
+
+  programs.nix-ld.enable = true;
+
   services.gclpr.enable = true;
   services.openssh = {
     settings.PermitRootLogin = "no";
